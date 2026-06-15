@@ -8,6 +8,8 @@
 - Copy-through or stub emit for a trivial `int main() { return 0; }` program.
 - Compile generated C with `cc`.
 - Treat generated-C compilation as the minimum verification gate.
+- Add `scripts/test_all.sh` for C++ vs generated-C stdout/status parity.
+- Add `std::cout`/`std::endl` lowering early so tests can assert printed behavior.
 
 ## Milestone 2 - Structs And Functions
 

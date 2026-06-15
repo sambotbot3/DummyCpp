@@ -15,5 +15,7 @@
 - First examples should be small.
 - Generated C should be readable, but compactness is preferred when readability and compactness conflict.
 - Generated C should be compiled for full verification; run resulting binaries when feasible.
+- Primary test oracle: compare original C++ stdout + exit status against generated-C stdout + exit status.
+- `std::cout`/printing support should come early because it makes the behavioral test harness useful.
 - Standard library support will be added progressively through small Dpp runtime helpers that support selected `std::` namespace features directly.
 - Open source resources should be used heavily as references, with license notes for any imported material.
