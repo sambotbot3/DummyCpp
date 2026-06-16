@@ -1,5 +1,7 @@
 # DummyCpp Roadmap
 
+Current detailed next-step plan: `docs/next-steps-parser-conversion-plan.md`.
+
 ## Milestone 1 - Skeleton CLI
 
 - CMake project.
@@ -25,18 +27,22 @@
 - Lower simple methods to free functions.
 - Lower member access in methods from implicit `this` to explicit `self`.
 - Add deterministic C name generation.
+- Add `tests/cases/005_struct_method.cpp`.
 
 ## Milestone 4 - Constructors
 
 - Lower simple constructors to init functions.
 - Support local object initialization.
 - Add explicit lifetime notes.
+- Add `tests/cases/004_class_counter.cpp`.
 
-## Milestone 5 - Tiny Runtime
+## Milestone 5 - Vector Runtime
 
-- Add `dpp_runtime.h`.
-- Add first stdlib-like helper: likely `string_view`, `array`, or `span`.
-- Add examples and generated C checks.
+- Finish `inject/c/dpp_vector.h` and `inject/c/dpp_vector.c`.
+- Lower `std::vector<int>` to `dpp_vector`.
+- Compile generated C with required runtime sources.
+- Add `tests/cases/006_vector_int.cpp`.
+- Then add vector of simple POD records with `tests/cases/007_vector_record.cpp`.
 
 ## Milestone 6 - Templates Lite
 

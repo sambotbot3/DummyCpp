@@ -19,3 +19,7 @@
 - `std::cout`/printing support should come early because it makes the behavioral test harness useful.
 - Standard library support will be added progressively through small Dpp runtime helpers that support selected `std::` namespace features directly.
 - Open source resources should be used heavily as references, with license notes for any imported material.
+- Parser and syntax checks live in their own library (`dpp_parser`) with its own CMake file.
+- Conversion passes live behind focused headers under `include/dpp/convert/`, such as `include/dpp/convert/iostream.h`.
+- Public implementation APIs use the `dpp` namespace.
+- Reusable C runtime/helper code lives under `inject/`; future `std::vector` support can start as a plain C struct with `void *data`, `size_t size`, and `size_t capacity`.

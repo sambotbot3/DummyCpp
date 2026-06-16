@@ -6,6 +6,8 @@ Build a C++ to C transpiler that starts with a deliberately small C++11 subset, 
 
 The early priority is a working compile pipeline, not perfect language-lawyer validation.
 
+For the detailed parser/conversion/runtime plan after the bootstrap slice, read `docs/next-steps-parser-conversion-plan.md`.
+
 ## Phase 0 - Project Shape
 
 - Create a minimal C++ command-line tool named `dpp`.

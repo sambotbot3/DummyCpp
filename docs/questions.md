@@ -15,6 +15,7 @@ This is the single place to collect questions. Do not scatter new questions acro
 ## Still Open
 
 1. Should generated C target C11 by default?
+   - Current recommendation: yes. Use C11 for runtime convenience and compiler availability.
 
 ## Frontend Direction
 
@@ -28,7 +29,9 @@ This is the single place to collect questions. Do not scatter new questions acro
 ## Standard Library
 
 5. Which tiny stdlib subset matters first: `array`, `span`, `string_view`, `vector`, or `string`?
+   - Current working answer: `vector` should come soon, after classes/methods, because Sam wants to see it early and it proves runtime injection.
 
 ## Output / Build
 
 6. Should `dpp` emit one `.c` file plus required runtime files, or generate a small output directory with CMake/Make build glue?
+   - Current recommendation: tests can compile one generated `.c` plus runtime `.c` files first; later `dpp` should support an output directory mode.

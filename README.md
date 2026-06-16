@@ -62,3 +62,5 @@ This first slice is intentionally tiny and friendly-input only:
 The project direction is Clang-based, but this initial bootstrap transpiler is a narrow implementation that lets us verify the first C++ -> C -> executable loop before adding the Clang AST frontend.
 
 See `docs/` for the plan, roadmap, decisions, resources, and condensed questions.
+
+Project layout is described in [docs/architecture.md](docs/architecture.md).

@@ -54,8 +54,7 @@ Initial direction: use Clang resources for the first useful lowerer, while docum
 
 The runtime should be boring C:
 
-- `dpp_runtime.h`
-- `dpp_runtime.c`
-- optional per-feature headers like `dpp_array.h`, `dpp_string_view.h`
+- reusable snippets under `inject/`
+- optional per-feature headers like `dpp_array.h`, `dpp_string_view.h`, `dpp_vector.h`
 
 Keep helpers small enough that generated C remains inspectable.
