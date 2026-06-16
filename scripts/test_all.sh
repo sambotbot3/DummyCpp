@@ -36,7 +36,11 @@ for cpp in "${ROOT_DIR}"/tests/cases/*.cpp; do
 
   c++ -std=c++11 "${cpp}" -o "${cpp_exe}"
   "${BUILD_DIR}/dpp" "${cpp}" -o "${c_file}"
-  cc "${c_file}" -o "${c_exe}"
+  if grep -q '"dpp_vector.h"' "${c_file}"; then
+    cc "${c_file}" "${ROOT_DIR}/inject/c/dpp_vector.c" -I "${ROOT_DIR}/inject/c" -o "${c_exe}"
+  else
+    cc "${c_file}" -o "${c_exe}"
+  fi
 
   run_capture "${cpp_exe}" "${case_dir}/cpp.stdout" "${case_dir}/cpp.status"
   run_capture "${c_exe}" "${case_dir}/c.stdout" "${case_dir}/c.status"
@@ -61,3 +65,33 @@ fi
 
 echo "All ${case_count} test case(s) passed."
 
+unsupported_count=0
+if compgen -G "${ROOT_DIR}/tests/unsupported/*.cpp" >/dev/null; then
+  for cpp in "${ROOT_DIR}"/tests/unsupported/*.cpp; do
+    unsupported_count=$((unsupported_count + 1))
+    name="$(basename "${cpp}" .cpp)"
+    case_dir="${TEST_BUILD_DIR}/unsupported_${name}"
+    mkdir -p "${case_dir}"
+
+    set +e
+    "${BUILD_DIR}/dpp" "${cpp}" -o "${case_dir}/${name}.generated.c" >"${case_dir}/dpp.stdout" 2>"${case_dir}/dpp.stderr"
+    status=$?
+    set -e
+
+    if [ "${status}" -eq 0 ]; then
+      echo "FAIL unsupported/${name}: dpp unexpectedly succeeded" >&2
+      exit 1
+    fi
+
+    if ! grep -q "syntax check failed" "${case_dir}/dpp.stderr"; then
+      echo "FAIL unsupported/${name}: missing syntax check diagnostic" >&2
+      exit 1
+    fi
+
+    echo "PASS unsupported/${name}"
+  done
+fi
+
+if [ "${unsupported_count}" -gt 0 ]; then
+  echo "All ${unsupported_count} unsupported case(s) rejected."
+fi

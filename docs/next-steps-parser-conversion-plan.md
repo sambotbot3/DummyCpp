@@ -572,18 +572,30 @@ Unsupported tests should pass when Dpp emits a clear diagnostic and exits nonzer
 
 ## Concrete Next Work Order
 
-1. Add parser token structs and keyword lookup tests.
+Progress so far:
+
+- Added parser token structs and sorted keyword lookup.
+- Added records conversion module: `include/dpp/convert/records.h`.
+- Implemented class constructor/method lowering for `004_class_counter.cpp`.
+- Implemented struct method extraction/lowering for `005_struct_method.cpp`.
+- Added runtime-aware harness linking for generated C that includes `dpp_vector.h`.
+- Finished the first `dpp_vector` runtime functions.
+- Implemented `std::vector<int>` recognition and lower `006_vector_int.cpp`.
+- Implemented vector of POD record support for `007_vector_record.cpp`.
+- Added `using namespace std; vector<int>` support in `008_using_namespace_vector.cpp`.
+- Added `std::vector<double>` support in `009_vector_double.cpp`.
+- Added `push_back(existing_record)` support in `010_vector_record_variable.cpp`.
+- Added parameterized class method support in `011_class_method_param.cpp`.
+- Added expected-failure tests for unsupported headers, exceptions, and inheritance.
+
+Next work:
+
+1. Add explicit parser/keyword unit tests instead of only exercising tokenization indirectly.
 2. Move `cout` parsing from line splitting toward token-aware chain parsing.
-3. Add basic type tracking for expressions used in `cout`.
-4. Add records conversion module: `include/dpp/convert/records.h`.
-5. Implement struct method extraction/lowering for `005_struct_method.cpp`.
-6. Implement class constructor/method lowering for `004_class_counter.cpp`.
-7. Add runtime need tracking and update `test_all.sh` to compile runtime C files.
-8. Finish `dpp_vector` runtime functions.
-9. Implement `std::vector<int>` recognition and lower `006_vector_int.cpp`.
-10. Implement vector of POD record support for `007_vector_record.cpp`.
-11. Replace more bootstrap string passes with IR-driven emission.
-12. Add Clang AST bridge once the IR shape is proven by the class/vector cases.
+3. Add stronger type tracking for expressions used in `cout`.
+4. Replace more bootstrap string passes with IR-driven emission.
+5. Expand unsupported-feature diagnostics for lambdas, references-as-fields, overload collisions, and unsupported vector element types.
+6. Add Clang AST bridge once the IR shape is proven by more class/vector cases.
 
 ## Open Questions To Track
 
@@ -594,4 +606,3 @@ Move answers into `docs/decisions.md` when settled.
 - Should generated helper functions be `static inline` by default or normal external functions?
 - Should method names mangle as `Type_method` first, or should we immediately use a collision-resistant scheme?
 - Should Dpp support only `std::vector<T>` spelling first, or also `using namespace std; vector<T>` in the same milestone?
-

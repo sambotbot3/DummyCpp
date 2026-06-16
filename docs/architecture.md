@@ -20,7 +20,9 @@ Responsibilities:
 - syntax diagnostics,
 - eventually Clang AST entry points.
 
-The current parser is only a bootstrap pass-through, but the library boundary is in place.
+The current parser keeps the original source text and also produces a lightweight token stream
+with keyword classification. It is still not a full C++ parser; Clang AST integration remains
+the planned source of truth for real syntax.
 
 The next planned shape is a token layer, keyword classifier, Clang AST bridge, and small Dpp IR. See `docs/next-steps-parser-conversion-plan.md`.
 
@@ -39,7 +41,8 @@ Examples:
 
 - `include/dpp/convert/iostream.h`
 - `include/dpp/convert/basic.h`
-- future: `include/dpp/convert/vector.h`
+- `include/dpp/convert/records.h`
+- `include/dpp/convert/vector.h`
 - future: `include/dpp/convert/string_view.h`
 
 All public APIs use the `dpp` namespace.
@@ -80,4 +83,5 @@ typedef struct dpp_vector {
 
 Keep injected C plain, small, and feature-scoped.
 
-The first runtime-backed standard-library target is planned as `std::vector<int>`, then vector of simple POD records.
+The first runtime-backed standard-library target is implemented for `std::vector<int>`,
+`std::vector<double>`, and vector of simple POD records.

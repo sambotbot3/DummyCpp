@@ -41,6 +41,18 @@ Or run the full example pipeline:
 scripts/run_point_example.sh
 ```
 
+Try newer examples by transpiling them to `build/` and compiling the generated C. Vector examples need the injected runtime:
+
+```bash
+build/dpp examples/class_counter.cpp -o build/class_counter.c
+cc build/class_counter.c -o build/class_counter
+./build/class_counter
+
+build/dpp examples/vector_int.cpp -o build/vector_int.c
+cc build/vector_int.c inject/c/dpp_vector.c -I inject/c -o build/vector_int
+./build/vector_int
+```
+
 Run the parity test harness:
 
 ```bash
@@ -48,16 +60,23 @@ scripts/test_all.sh
 ```
 
 The harness compiles each original C++11 case, runs it, transpiles it to C, compiles the generated C, runs that binary, then compares stdout and exit status.
+It also runs `tests/unsupported/` cases and expects Dpp to reject them with a syntax/support diagnostic.
 
 ## Current Bootstrap Support
 
 This first slice is intentionally tiny and friendly-input only:
 
 - simple `struct` declarations with fields,
+- simple `class` declarations with fields,
+- one-line methods lowered to `Type_method(Type *self, ...)`,
+- simple constructor initializer lists lowered to `Type_init`,
 - free functions,
 - `int main()` lowered to `int main(void)`,
 - aggregate initialization like `Point p{1, 2};`.
 - narrow `std::cout` chains with string literals, integer expressions, and `std::endl`.
+- `std::vector<int>`, `std::vector<double>`, and `std::vector<SimpleRecord>` with `push_back`, `size`, and `[]`.
+- `using namespace std;` for `cout`, `endl`, and `vector<T>`.
+- early unsupported-feature diagnostics for unsupported headers, exceptions, inheritance, virtual methods, and user-defined templates.
 
 The project direction is Clang-based, but this initial bootstrap transpiler is a narrow implementation that lets us verify the first C++ -> C -> executable loop before adding the Clang AST frontend.
 

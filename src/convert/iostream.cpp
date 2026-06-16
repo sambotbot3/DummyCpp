@@ -1,5 +1,6 @@
 #include "dpp/convert/iostream.h"
 
+#include <cctype>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -23,6 +24,33 @@ bool starts_with(const std::string &value, const std::string &prefix) {
 
 bool is_string_literal(const std::string &value) {
   return value.size() >= 2 && value.front() == '"' && value.back() == '"';
+}
+
+bool is_size_expression(const std::string &value) {
+  return value.find(".size()") != std::string::npos ||
+         value.find("dpp_vector_size(") != std::string::npos;
+}
+
+bool is_double_expression(const std::string &value) {
+  if (value.find("double *") != std::string::npos) {
+    return true;
+  }
+  for (std::size_t i = 0; i < value.size(); ++i) {
+    if (value[i] != '.') {
+      continue;
+    }
+    const bool has_digit_before = i > 0 && std::isdigit(static_cast<unsigned char>(value[i - 1]));
+    const bool has_digit_after =
+        i + 1 < value.size() && std::isdigit(static_cast<unsigned char>(value[i + 1]));
+    if (has_digit_before || has_digit_after) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool is_char_literal(const std::string &value) {
+  return value.size() >= 3 && value.front() == '\'' && value.back() == '\'';
 }
 
 std::string leading_indent(const std::string &line) {
@@ -79,6 +107,15 @@ std::string lower_cout_line(const std::string &line, bool &used_stdio) {
     } else if (is_string_literal(part)) {
       format += "%s";
       args.push_back(part);
+    } else if (is_size_expression(part)) {
+      format += "%zu";
+      args.push_back(part);
+    } else if (is_double_expression(part)) {
+      format += "%g";
+      args.push_back(part);
+    } else if (is_char_literal(part)) {
+      format += "%c";
+      args.push_back(part);
     } else {
       format += "%d";
       args.push_back(part);
@@ -116,4 +153,3 @@ IostreamResult lower_iostreams(const std::string &source) {
 }
 
 } // namespace dpp::convert
-
