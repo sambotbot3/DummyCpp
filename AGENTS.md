@@ -12,6 +12,7 @@ This project is building **DummyCpp**, shorthand **Dpp**: a small C++ to C trans
 - Keep generated C readable enough to inspect, but prefer compact output when there is a tradeoff.
 - Objects/classes should lower to C structs with no hidden object overhead beyond fields and explicit helper functions.
 - Favor zero-cost or explicit-cost translations. If a feature needs runtime support, make that support visible and documented.
+- Transpilation should preserve zero-cost overhead where possible; any unavoidable runtime overhead must be explicit in generated C and documented.
 
 ## Early Technical Bias
 

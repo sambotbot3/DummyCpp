@@ -9,6 +9,9 @@ Current support:
 
 - `c/dpp_vector.h` and `c/dpp_vector.c` provide the reusable backing store for
   supported `std::vector<T>` lowerings.
+- `c/dpp_map.h` and `c/dpp_map.c` provide explicit runtime backing for the
+  supported `std::map<K, int>` and `std::unordered_map<K, int>` lowerings where
+  `K` is `char`, `int`, or `long`.
 
 Future support may include:
 

@@ -1,6 +1,7 @@
 add_library(dpp_convert
   basic.cpp
   iostream.cpp
+  map.cpp
   memory.cpp
   records.cpp
   vector.cpp

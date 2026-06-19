@@ -28,7 +28,9 @@ bool is_string_literal(const std::string &value) {
 
 bool is_size_expression(const std::string &value) {
   return value.find(".size()") != std::string::npos ||
-         value.find("dpp_vector_size(") != std::string::npos;
+         value.find("dpp_vector_size(") != std::string::npos ||
+         value.find("dpp_map_size(") != std::string::npos ||
+         value.find("dpp_unordered_map_size(") != std::string::npos;
 }
 
 bool is_double_expression(const std::string &value) {
