@@ -15,5 +15,8 @@ Run all tests:
 scripts/test_all.sh
 ```
 
-Each test case lives in `tests/cases/*.cpp`.
+Each supported test case lives in `tests/cases/*.cpp`. The later cases are intentionally
+longer and combine helpers, records/classes, vectors, loops, and multiple return paths.
 
+Unsupported-feature fixtures live in `tests/unsupported/*.cpp`. Those pass when `dpp`
+rejects them with a syntax/support diagnostic.

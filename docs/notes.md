@@ -54,7 +54,8 @@ Initial direction: use Clang resources for the first useful lowerer, while docum
 
 The runtime should be boring C:
 
-- reusable snippets under `inject/`
+- reusable direct C ports under `inject/`
 - optional per-feature headers like `dpp_array.h`, `dpp_string_view.h`, `dpp_vector.h`
+- built by CMake and linkable into every generated-C executable
 
 Keep helpers small enough that generated C remains inspectable.

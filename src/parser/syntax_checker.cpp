@@ -50,8 +50,19 @@ std::vector<Diagnostic> check_bootstrap_syntax(const ParsedSource &source) {
     }
   }
 
-  if (std::regex_search(source.text, std::regex(R"(\b(class|struct)\s+[A-Za-z_]\w*\s*:)"))) {
-    add_error(diagnostics, "inheritance is not supported yet");
+  const std::regex inheritance_re(R"(\b(class|struct)\s+[A-Za-z_]\w*\s*:\s*([^{]+)\{)");
+  for (std::sregex_iterator it(source.text.begin(), source.text.end(), inheritance_re), end;
+       it != end; ++it) {
+    const std::string clause = (*it)[2].str();
+    if (clause.find(',') != std::string::npos) {
+      add_error(diagnostics, "multiple inheritance is not supported yet");
+    }
+    if (std::regex_search(clause, std::regex(R"(\bvirtual\b)"))) {
+      add_error(diagnostics, "virtual inheritance is not supported yet");
+    }
+    if (std::regex_search(clause, std::regex(R"(\b(private|protected)\b)"))) {
+      add_error(diagnostics, "private/protected inheritance is not supported yet");
+    }
   }
 
   return diagnostics;

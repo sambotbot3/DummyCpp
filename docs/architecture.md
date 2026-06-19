@@ -68,9 +68,11 @@ Location:
 
 - `inject/`
 
-Reusable C segments live here when generated code needs helpers.
+Reusable C segments live here when generated code needs helpers. The CMake
+build always builds these helpers as `dpp_inject`, and generated-C examples can
+link that runtime unconditionally.
 
-Example future `std::vector` direction:
+Current `std::vector` backing shape:
 
 ```c
 typedef struct dpp_vector {
@@ -81,7 +83,8 @@ typedef struct dpp_vector {
 } dpp_vector;
 ```
 
-Keep injected C plain, small, and feature-scoped.
+Keep injected C plain, small, feature-scoped, and reusable across generated-C
+executables.
 
 The first runtime-backed standard-library target is implemented for `std::vector<int>`,
 `std::vector<double>`, and vector of simple POD records.

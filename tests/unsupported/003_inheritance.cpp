@@ -1,11 +1,16 @@
 #include <iostream>
 
-class Base {
+class Left {
 public:
-  int value;
+  int left;
 };
 
-class Derived : public Base {
+class Right {
+public:
+  int right;
+};
+
+class Combined : public Left, public Right {
 public:
   int extra;
 };

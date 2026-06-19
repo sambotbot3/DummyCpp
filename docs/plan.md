@@ -1,163 +1,40 @@
-# DummyCpp Initial Plan
+# DummyCpp Plan
 
 ## Goal
 
-Build a C++ to C transpiler that starts with a deliberately small C++11 subset, emits compact but inspectable C, and progressively grows enough standard-library/runtime support to compile practical programs.
+DummyCpp (`dpp`) is a small C++11-to-C transpiler. It should emit compact, inspectable C and prove each supported feature by compiling and running generated C.
 
-The early priority is a working compile pipeline, not perfect language-lawyer validation.
+The project is intentionally not trying to be a full C++ compiler yet. It should grow by small, verified slices.
 
-For the detailed parser/conversion/runtime plan after the bootstrap slice, read `docs/next-steps-parser-conversion-plan.md`.
+## Working Strategy
 
-## Phase 0 - Project Shape
+- Use C++ for the transpiler.
+- Keep the CLI thin; implementation belongs in libraries.
+- Keep generated-C compilation as the minimum acceptance gate.
+- Prefer behavioral parity tests: original C++ stdout/status must match generated C stdout/status.
+- Keep newer tests condensed into broader workflow files unless a feature needs a focused bootstrap case.
+- Use Clang/LLVM as the eventual parsing source of truth, but keep the bootstrap pipeline useful while that bridge is built.
 
-- Create a minimal C++ command-line tool named `dpp`.
-- Accept an input `.cpp` file and emit a `.c` file.
-- Use a Clang-based frontend for the initial implementation path.
-- Add a tiny Dpp runtime directory later for generated helper functions and standard-library substitutes.
-- Keep examples and tests tiny and runnable.
+## Implemented Bootstrap Coverage
 
-Suggested first layout:
+- CLI build with CMake.
+- `std::cout` / `std::endl` to `printf`.
+- Free functions and primitive expressions.
+- Struct/class fields.
+- One-line methods lowered to explicit `self` functions.
+- Constructors lowered to `Type_init`.
+- Aggregate initialization for simple records.
+- Single public inheritance as embedded base field.
+- `std::vector` runtime for `int`, `double`, and simple record/class values.
+- Runtime linking in `scripts/test_all.sh`.
+- Expected-failure tests for unsupported features.
 
-```text
-DummyCpp/
-  AGENTS.md
-  README.md
-  docs/
-  include/
-  src/
-  tests/
-  examples/
-```
+## Next Engineering Direction
 
-## Phase 1 - First Vertical Slice
+- Replace more regex/string conversion with token-aware or IR-backed conversion.
+- Add parser/keyword tests.
+- Build a tiny Dpp IR before going deeper on Clang AST extraction.
+- Improve diagnostics and unsupported-feature reporting.
+- Expand inheritance and vector support only through green parity tests.
 
-Target input:
-
-```cpp
-struct Point {
-  int x;
-  int y;
-};
-
-int add(int a, int b) {
-  return a + b;
-}
-
-int main() {
-  Point p{1, 2};
-  return add(p.x, p.y);
-}
-```
-
-Target output shape:
-
-```c
-typedef struct Point {
-  int x;
-  int y;
-} Point;
-
-int add(int a, int b) {
-  return a + b;
-}
-
-int main(void) {
-  Point p = (Point){1, 2};
-  return add(p.x, p.y);
-}
-```
-
-Acceptance:
-
-- `dpp examples/point.cpp -o build/point.c`
-- `cc build/point.c -o build/point`
-- `./build/point` exits with `3`
-- Generated C is always compiled as part of verification; tests should run the binary when possible.
-
-## Phase 2 - Simple Methods And Name Lowering
-
-Support simple class/struct methods by lowering `this` to an explicit pointer parameter.
-
-Input:
-
-```cpp
-struct Counter {
-  int value;
-  void inc() { value += 1; }
-};
-```
-
-Output shape:
-
-```c
-typedef struct Counter {
-  int value;
-} Counter;
-
-void Counter_inc(Counter *self) {
-  self->value += 1;
-}
-```
-
-Initial constraints:
-
-- No overloads at first, or use simple deterministic mangling.
-- No access-control enforcement early.
-- Treat `class` like `struct` until private/default access matters.
-
-## Phase 3 - Constructors And Destructors
-
-Lower simple constructors/destructors to explicit init/destroy functions.
-
-- `T t(args);` becomes `T t; T_init(&t, args);`
-- `T t{args};` becomes either compound literal if aggregate, or `T_init`.
-- Destructors are inserted explicitly for simple local scopes once scope tracking exists.
-
-Delay complicated RAII until the basic lifetime model is stable.
-
-## Phase 4 - Tiny Standard Library Subset
-
-Add Dpp runtime support incrementally for selected `std::` namespace features.
-
-Initial candidates:
-
-- `std::size_t` -> C `size_t`
-- `std::nullptr_t` / `nullptr` -> `NULL` or `((void*)0)` depending context
-- tiny `std::array<T, N>` -> struct wrapper around `T data[N]`
-- tiny `std::span<T>` -> pointer + length
-- tiny `std::string_view` -> pointer + length
-- minimal `std::vector<T>` later with explicit runtime allocation helpers
-- minimal `std::string` later
-
-Rule: each standard-library feature gets a small compatibility note and compile/run examples.
-
-## Phase 5 - Templates, Slowly
-
-Only after normal structs/functions/methods work:
-
-- Start with function templates used with concrete visible instantiations.
-- Generate one C function per instantiation.
-- Then simple class templates like `Array<T, N>`.
-- Delay SFINAE, concepts, partial specialization, dependent name complexity, and heavy metaprogramming.
-
-## Phase 6 - Larger Compatibility
-
-Consider:
-
-- namespaces,
-- overload mangling,
-- const/reference semantics,
-- operator overloading,
-- enum classes,
-- lambdas without captures, then simple captures,
-- header handling,
-- multi-file builds.
-
-## Non-Goals For Early Milestones
-
-- Full C++ compliance.
-- Full syntax/type checking.
-- Exception support.
-- ABI compatibility with C++ compilers.
-- Drop-in replacement for Clang/GCC/MSVC.
-- Full standard-library implementation.
+See `docs/next-steps-parser-conversion-plan.md` for the active short checklist.

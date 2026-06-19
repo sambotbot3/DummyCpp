@@ -45,6 +45,16 @@ std::string join_lines(const std::vector<std::string> &lines) {
   return out.str();
 }
 
+std::size_t count_char(const std::string &line, char ch) {
+  std::size_t count = 0;
+  for (const char item : line) {
+    if (item == ch) {
+      ++count;
+    }
+  }
+  return count;
+}
+
 std::string c_type_for_vector_elem(const std::string &elem_type) {
   if (elem_type == "int") {
     return "int";
@@ -68,6 +78,12 @@ std::string lower_vector_exprs(std::string line, const std::map<std::string, std
   for (const auto &entry : vectors) {
     const std::string &name = entry.first;
     const std::string c_type = c_type_for_vector_elem(entry.second);
+    line = std::regex_replace(
+        line, std::regex("\\b" + name + R"(\s*\[\s*([^\]]+)\s*\]\.([A-Za-z_]\w*)\s*\(\s*\))"),
+        c_type + "_$2((" + c_type + " *)dpp_vector_at(&" + name + ", $1))");
+    line = std::regex_replace(
+        line, std::regex("\\b" + name + R"(\s*\[\s*([^\]]+)\s*\]\.([A-Za-z_]\w*)\s*\(([^()]*)\))"),
+        c_type + "_$2((" + c_type + " *)dpp_vector_at(&" + name + ", $1), $3)");
     line = std::regex_replace(line, std::regex("\\b" + name + R"(\.size\s*\(\s*\))"),
                               "dpp_vector_size(&" + name + ")");
     line = std::regex_replace(line, std::regex("\\b" + name + R"(\s*\[\s*([^\]]+)\s*\])"),
@@ -90,11 +106,23 @@ VectorResult lower_vectors(const std::string &source) {
   VectorResult result;
   std::map<std::string, std::string> vectors;
   std::vector<std::string> out;
+  std::size_t brace_depth = 0;
+
+  auto update_scope = [&](const std::string &line) {
+    const std::size_t before = brace_depth;
+    brace_depth += count_char(line, '{');
+    const std::size_t closes = count_char(line, '}');
+    brace_depth = closes > brace_depth ? 0 : brace_depth - closes;
+    if (before == 1 && brace_depth == 0) {
+      vectors.clear();
+    }
+  };
 
   for (const std::string &line : split_lines(source)) {
     const std::string stripped = trim(line);
     if (stripped == "#include <vector>") {
       result.used_vector = true;
+      update_scope(line);
       continue;
     }
 
@@ -110,6 +138,7 @@ VectorResult lower_vectors(const std::string &source) {
       out.push_back(indent + "dpp_vector " + name + ";");
       out.push_back(indent + "dpp_vector_init(&" + name + ", sizeof(" +
                     c_type_for_vector_elem(elem_type) + "));");
+      update_scope(line);
       continue;
     }
 
@@ -141,10 +170,12 @@ VectorResult lower_vectors(const std::string &source) {
         }
       }
       out.push_back(indent + "return dpp_return_value;");
+      update_scope(line);
       continue;
     }
 
     out.push_back(lowered);
+    update_scope(line);
   }
 
   result.source = join_lines(out);

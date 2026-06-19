@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build"
 TEST_BUILD_DIR="${BUILD_DIR}/tests"
+INJECT_LIB="${BUILD_DIR}/inject/libdpp_inject.a"
 
 mkdir -p "${TEST_BUILD_DIR}"
 
@@ -36,11 +37,7 @@ for cpp in "${ROOT_DIR}"/tests/cases/*.cpp; do
 
   c++ -std=c++11 "${cpp}" -o "${cpp_exe}"
   "${BUILD_DIR}/dpp" "${cpp}" -o "${c_file}"
-  if grep -q '"dpp_vector.h"' "${c_file}"; then
-    cc "${c_file}" "${ROOT_DIR}/inject/c/dpp_vector.c" -I "${ROOT_DIR}/inject/c" -o "${c_exe}"
-  else
-    cc "${c_file}" -o "${c_exe}"
-  fi
+  cc "${c_file}" -I "${ROOT_DIR}/inject/c" "${INJECT_LIB}" -o "${c_exe}"
 
   run_capture "${cpp_exe}" "${case_dir}/cpp.stdout" "${case_dir}/cpp.status"
   run_capture "${c_exe}" "${case_dir}/c.stdout" "${case_dir}/c.status"

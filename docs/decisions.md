@@ -22,4 +22,4 @@
 - Parser and syntax checks live in their own library (`dpp_parser`) with its own CMake file.
 - Conversion passes live behind focused headers under `include/dpp/convert/`, such as `include/dpp/convert/iostream.h`.
 - Public implementation APIs use the `dpp` namespace.
-- Reusable C runtime/helper code lives under `inject/`; future `std::vector` support can start as a plain C struct with `void *data`, `size_t size`, and `size_t capacity`.
+- Reusable C runtime/helper code lives under `inject/`; `std::vector` support uses a direct C runtime port built as `dpp_inject` and linked into generated-C executables.

@@ -3,12 +3,13 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build"
+INJECT_LIB="${BUILD_DIR}/inject/libdpp_inject.a"
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}"
 cmake --build "${BUILD_DIR}"
 
 "${BUILD_DIR}/dpp" "${ROOT_DIR}/examples/point.cpp" -o "${BUILD_DIR}/point.c"
-cc "${BUILD_DIR}/point.c" -o "${BUILD_DIR}/point"
+cc "${BUILD_DIR}/point.c" -I "${ROOT_DIR}/inject/c" "${INJECT_LIB}" -o "${BUILD_DIR}/point"
 set +e
 "${BUILD_DIR}/point"
 status=$?

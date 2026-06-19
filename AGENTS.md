@@ -8,7 +8,7 @@ This project is building **DummyCpp**, shorthand **Dpp**: a small C++ to C trans
 - Prefer working transformations over complete C++ syntax validation in early milestones.
 - Ignore difficult C++ portions initially; document gaps clearly and continue building useful coverage.
 - Progressively add more of the C++ standard library by lowering it to C helpers/runtime code.
-- Use open source resources heavily: existing parsers, compiler frontends, ABI notes, libc/libstdc++/LLVM/Clang references, tiny C++ interpreters/transpilers, and test suites when licenses permit.
+- Use open source resources when possible: existing parsers, compiler frontends, ABI notes, libc/libstdc++/LLVM/Clang references, tiny C++ interpreters/transpilers, and test suites when licenses permit.
 - Keep generated C readable enough to inspect, but prefer compact output when there is a tradeoff.
 - Objects/classes should lower to C structs with no hidden object overhead beyond fields and explicit helper functions.
 - Favor zero-cost or explicit-cost translations. If a feature needs runtime support, make that support visible and documented.
@@ -39,7 +39,11 @@ This project is building **DummyCpp**, shorthand **Dpp**: a small C++ to C trans
 
 ## Working Rules
 
-- Keep project notes in `docs/`.
+- Keep the main README.md presentable, clean, and readable.
+- Keep notes local to where they are applicable. 
+  - For concise notes for a subdirectory read/write to README.md. 
+  - For code specific notes write concise comments.
+- Keep larger project notes in `docs/`.
 - Put condensed open questions only in `docs/questions.md`.
 - When a decision is made, move it from questions into `docs/decisions.md`.
 - Prefer small examples in `examples/` and regression tests in `tests/`.
@@ -54,3 +58,7 @@ This project is building **DummyCpp**, shorthand **Dpp**: a small C++ to C trans
 - Project name: `DummyCpp`.
 - Tool shorthand: `Dpp`.
 - Working CLI name: `dpp`.
+
+## Directories
+
+- `inject/` - reusable plain-C runtime ports for supported C++ classes/features, built by CMake as `dpp_inject` and linked with generated-C executables.
