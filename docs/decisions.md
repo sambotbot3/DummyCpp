@@ -20,6 +20,7 @@
 - Standard library support will be added progressively through small Dpp runtime helpers that support selected `std::` namespace features directly.
 - Open source resources should be used heavily as references, with license notes for any imported material.
 - Parser and syntax checks live in their own library (`dpp_parser`) with its own CMake file.
+- The bootstrap lexer is maintained as `src/parser/lexer.re` for re2c `4.5.1`; generation is explicit through `scripts/gen_lexer.sh`, and CMake builds the generated `lexer.cpp`.
 - Conversion passes live behind focused headers under `include/dpp/convert/`, such as `include/dpp/convert/iostream.h`.
 - Public implementation APIs use the `dpp` namespace.
 - Reusable C runtime/helper code lives under `inject/`; `std::vector` support uses a direct C runtime port built as `dpp_inject` and linked into generated-C executables.

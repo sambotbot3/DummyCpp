@@ -43,6 +43,7 @@ This project is building **DummyCpp**, shorthand **Dpp**: a small C++ to C trans
 - Keep notes local to where they are applicable. 
   - For concise notes for a subdirectory read/write to README.md. 
   - For code specific notes write concise comments.
+- always use trash instead of rm
 - Keep larger project notes in `docs/`.
 - Put condensed open questions only in `docs/questions.md`.
 - When a decision is made, move it from questions into `docs/decisions.md`.

@@ -21,8 +21,10 @@ Responsibilities:
 - eventually Clang AST entry points.
 
 The current parser keeps the original source text and also produces a lightweight token stream
-with keyword classification. It is still not a full C++ parser; Clang AST integration remains
-the planned source of truth for real syntax.
+with keyword classification. The lexer is maintained in `src/parser/lexer.re` for re2c
+`4.5.1`; run `scripts/gen_lexer.sh` after editing `.re` files to update the checked-in
+generated C++ source. It is still not a full C++ parser; Clang AST integration remains the
+planned source of truth for real syntax.
 
 The next planned shape is a token layer, keyword classifier, Clang AST bridge, and small Dpp IR. See `docs/next-steps-parser-conversion-plan.md`.
 

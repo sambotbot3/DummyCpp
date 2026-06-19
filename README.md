@@ -19,6 +19,13 @@ cmake -S . -B build
 cmake --build build
 ```
 
+The lexer is maintained in `src/parser/lexer.re` for re2c `4.5.1`.
+After editing `.re` lexer sources, regenerate checked-in C++ sources explicitly:
+
+```bash
+scripts/gen_lexer.sh
+```
+
 Transpile the starter example:
 
 ```bash

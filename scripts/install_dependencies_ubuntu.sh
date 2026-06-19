@@ -16,10 +16,10 @@ $SUDO apt-get install -y \
   build-essential \
   cmake \
   ninja-build \
+  re2c \
   clang \
   llvm \
   llvm-dev \
   libclang-dev
 
 echo "DummyCpp dependencies installed."
-
