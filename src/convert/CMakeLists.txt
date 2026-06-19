@@ -1,4 +1,5 @@
 add_library(dpp_convert
+  algorithm.cpp
   basic.cpp
   iostream.cpp
   map.cpp

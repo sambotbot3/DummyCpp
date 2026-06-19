@@ -12,6 +12,10 @@ Current support:
 - `c/dpp_map.h` and `c/dpp_map.c` provide explicit runtime backing for the
   supported `std::map<K, int>` and `std::unordered_map<K, int>` lowerings where
   `K` is `char`, `int`, or `long`.
+- `c/dpp_algorithm.h` provides header-only macro lowerings for selected
+  `<algorithm>` calls: `std::sort`, `std::reverse`, and `std::fill` over
+  supported `std::vector<T>` ranges, plus `std::min`, `std::max`, and
+  `std::swap`.
 
 Future support may include:
 
