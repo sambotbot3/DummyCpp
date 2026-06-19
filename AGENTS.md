@@ -1,4 +1,4 @@
-# AGENTS.md - DummyCpp / Dpp
+# AGENTS.md - DummyCpp
 
 This project is building **DummyCpp**, shorthand **Dpp**: a small C++ to C transpiler written in C++.
 
@@ -40,10 +40,10 @@ This project is building **DummyCpp**, shorthand **Dpp**: a small C++ to C trans
 ## Working Rules
 
 - Keep the main README.md presentable, clean, and readable.
-- Keep notes local to where they are applicable. 
-  - For concise notes for a subdirectory read/write to README.md. 
+- Keep notes local to where they are applicable.
+  - For concise notes for a subdirectory read/write to README.md.
   - For code specific notes write concise comments.
-- always use trash instead of rm
+- Always use trash instead of `rm`.
 - Keep larger project notes in `docs/`.
 - Put condensed open questions only in `docs/questions.md`.
 - When a decision is made, move it from questions into `docs/decisions.md`.
@@ -51,7 +51,7 @@ This project is building **DummyCpp**, shorthand **Dpp**: a small C++ to C trans
 - Do not block on theoretical completeness; build the narrowest compileable vertical slice first.
 - Whenever adding a supported C++ feature, add:
   - one input example,
-  - expected generated C shape,
+  - concise expected generated C shape notes without large snippets,
   - full verification by compiling generated C, and running it when feasible.
 
 ## Naming
@@ -62,4 +62,8 @@ This project is building **DummyCpp**, shorthand **Dpp**: a small C++ to C trans
 
 ## Directories
 
+- `src/` - transpiler implementation. See nested `AGENTS.md` files before editing parser or converter code.
+- `include/` - public Dpp C++ headers matching implementation modules.
 - `inject/` - reusable plain-C runtime ports for supported C++ classes/features, built by CMake as `dpp_inject` and linked with generated-C executables.
+- `tests/` - parity and unsupported-feature fixtures for the bootstrap subset.
+- `docs/` - longer-lived project notes, decisions, plans, references, and open questions.

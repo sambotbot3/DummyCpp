@@ -9,11 +9,7 @@ The primary test oracle is behavioral parity:
 5. Run the generated-C binary and capture stdout + exit status.
 6. Diff original C++ behavior against generated-C behavior.
 
-Run all tests:
-
-```bash
-scripts/test_all.sh
-```
+Run all tests with `scripts/test_all.sh`.
 
 Each supported test case lives in `tests/cases/*.cpp`. The later cases are intentionally
 longer and combine helpers, records/classes, vectors, loops, and multiple return paths.

@@ -59,3 +59,13 @@ The runtime should be boring C:
 - built by CMake and linkable into every generated-C executable
 
 Keep helpers small enough that generated C remains inspectable.
+
+## Smart Pointer Shape
+
+The initial `<memory>` subset is local and explicit. `std::unique_ptr<T>` lowers
+to one owned allocation, explicit construction, direct method access, and cleanup
+before returning or leaving the supported scope.
+
+`std::shared_ptr<T>` uses `dpp_shared_ptr`, `dpp_shared_create`, `dpp_shared_copy`, and
+`dpp_shared_destroy`; destroy decrements the counter and calls `T_destroy` before `free`
+when the last reference is released.

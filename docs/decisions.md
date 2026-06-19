@@ -24,3 +24,4 @@
 - Conversion passes live behind focused headers under `include/dpp/convert/`, such as `include/dpp/convert/iostream.h`.
 - Public implementation APIs use the `dpp` namespace.
 - Reusable C runtime/helper code lives under `inject/`; `std::vector` support uses a direct C runtime port built as `dpp_inject` and linked into generated-C executables.
+- `std::unique_ptr<T>` and `std::shared_ptr<T>` lower to explicit C ownership helpers in `dpp_memory`, with generated cleanup before return and function-scope exit.

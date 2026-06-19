@@ -27,6 +27,6 @@ fi
 
 for source in "${sources[@]}"; do
   output="${source%.re}.cpp"
-  re2c --input custom -o "${output}" "${source}"
+  re2c --input custom --no-debug-info --no-generation-date --no-version -o "${output}" "${source}"
   echo "generated ${output#${ROOT_DIR}/}"
 done

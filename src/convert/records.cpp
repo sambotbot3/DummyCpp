@@ -239,6 +239,14 @@ std::string emit_record(const Record &record, const std::map<std::string, Record
     out << "}\n";
   }
 
+  out << "\nstatic inline void " << record.name << "_destroy(void *value) {\n"
+      << "  " << record.name << " *self = (" << record.name << " *)value;\n";
+  if (!record.base_name.empty()) {
+    out << "  " << record.base_name << "_destroy(&self->base);\n";
+  }
+  out << "  (void)self;\n"
+      << "}\n";
+
   for (const Method &method : record.methods) {
     out << "\nstatic inline " << method.return_type << " " << record.name << "_" << method.name
         << "(" << (method.is_const ? "const " : "") << record.name << " *self";

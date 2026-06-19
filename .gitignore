@@ -1,5 +1,4 @@
 build/
-src/parser/lexer.cpp
 *.o
 *.a
 *.so

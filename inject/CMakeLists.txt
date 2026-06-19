@@ -1,4 +1,5 @@
 add_library(dpp_inject STATIC
+  c/dpp_memory.c
   c/dpp_vector.c
 )
 

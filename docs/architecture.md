@@ -70,20 +70,9 @@ Location:
 
 - `inject/`
 
-Reusable C segments live here when generated code needs helpers. The CMake
-build always builds these helpers as `dpp_inject`, and generated-C examples can
-link that runtime unconditionally.
-
-Current `std::vector` backing shape:
-
-```c
-typedef struct dpp_vector {
-  void *data;
-  size_t elem_size;
-  size_t size;
-  size_t capacity;
-} dpp_vector;
-```
+Reusable C segments live here when generated code needs helpers. The CMake build
+always builds these helpers as `dpp_inject`, and generated-C examples can link
+that runtime unconditionally.
 
 Keep injected C plain, small, feature-scoped, and reusable across generated-C
 executables.

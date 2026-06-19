@@ -19,11 +19,9 @@ Do not widen a feature until `scripts/test_all.sh` is green.
 - Free functions, primitive locals, loops, and simple branches that are already valid C.
 - Struct/class fields and one-line methods lowered to `Type_method(self, ...)`.
 - Simple constructors lowered to `Type_init`.
-- Single public inheritance lowered as first-field base embedding:
-  - `class Derived : public Base` -> `typedef struct Derived { Base base; ... } Derived;`
-  - base constructor initializers -> `Base_init(&self->base, ...)`
-  - derived calls to base methods -> `Base_method(&obj.base, ...)`
-  - base field access -> `obj.base.field`
+- Single public inheritance lowered as first-field base embedding, with base
+  constructor calls, base method calls, and base field access rewritten through
+  the embedded base member.
 - `std::vector<int>`, `std::vector<double>`, and vector of simple record/class values through `inject/c/dpp_vector.*`.
 - Runtime cleanup before vector-return paths in supported local-function shapes.
 - Unsupported diagnostics for unsupported headers, exceptions, multiple/private/protected/virtual inheritance, virtual methods, and user templates.
