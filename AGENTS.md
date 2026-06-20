@@ -13,6 +13,7 @@ This project is building **DummyCpp**, shorthand **Dpp**: a C++ to C transpiler 
 - Favor zero-cost or explicit-cost translations. If a feature needs runtime support, make that support visible and documented.
 - Place c++ std lib replacements in `inject/`. Sometimes for things like templates this may need to be macros.
 - dpp client tool will use similar flags to gcc.
+- It is not your primary job to detect syntax errors.
 
 ## Planning
 

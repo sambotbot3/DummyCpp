@@ -81,9 +81,29 @@ struct Token {
   SourceRange range;
 };
 
+struct FunctionParameter {
+  std::string type;
+  std::string name;
+};
+
+struct FunctionDecl {
+  std::string return_type;
+  std::string name;
+  std::vector<FunctionParameter> parameters;
+  std::string body;
+  SourceRange range;
+};
+
+struct FunctionTemplateDecl {
+  std::vector<std::string> parameters;
+  FunctionDecl function;
+  SourceRange range;
+};
+
 struct ParsedSource {
   std::string text;
   std::vector<Token> tokens;
+  std::vector<FunctionTemplateDecl> function_templates;
 };
 
 ParsedSource parse_translation_unit(const std::string &source);

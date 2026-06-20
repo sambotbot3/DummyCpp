@@ -7,6 +7,7 @@ add_library(dpp_convert
   memory.cpp
   records.cpp
   string.cpp
+  templates.cpp
   vector.cpp
 )
 

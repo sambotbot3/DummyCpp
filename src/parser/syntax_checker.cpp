@@ -22,6 +22,7 @@ bool is_supported_include(const std::string &include) {
 
 std::vector<Diagnostic> check_bootstrap_syntax(const ParsedSource &source) {
   std::vector<Diagnostic> diagnostics;
+  std::size_t template_keyword_count = 0;
 
   if (source.text.find("std::cout") != std::string::npos &&
       source.text.find("#include <iostream>") == std::string::npos) {
@@ -48,11 +49,16 @@ std::vector<Diagnostic> check_bootstrap_syntax(const ParsedSource &source) {
       add_error(diagnostics, "virtual methods are not supported yet");
       break;
     case KeywordKind::template_kw:
-      add_error(diagnostics, "user-defined templates are not supported yet");
+      ++template_keyword_count;
       break;
     default:
       break;
     }
+  }
+
+  if (template_keyword_count != source.function_templates.size()) {
+    add_error(diagnostics,
+              "unsupported template declaration; only simple function templates are supported");
   }
 
   const std::regex inheritance_re(R"(\b(class|struct)\s+[A-Za-z_]\w*\s*:\s*([^{]+)\{)");

@@ -17,4 +17,4 @@ records/classes and runtime-backed containers. The later cases are intentionally
 and combine helpers, records/classes, vectors, loops, and multiple return paths.
 
 Unsupported-feature fixtures live in `tests/unsupported/*.cpp`. Those pass when `dpp`
-rejects them with a syntax/support diagnostic.
+rejects them with a syntax, preprocess, or template-instantiation support diagnostic.

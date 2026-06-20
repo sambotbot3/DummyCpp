@@ -47,6 +47,25 @@ Regression coverage lives in `tests/cases/020_algorithm_sort.cpp` and
 - Unsupported: `reserve`, `resize`, `pop_back`, `front`, iterators outside
   supported `<algorithm>` full-range calls, and nested vectors.
 
+## `<map>` and `<unordered_map>`
+
+- Supported: local maps with integral keys and values, `operator[]`, and
+  `size()` in narrow single-file cases.
+- Supported: local `std::map<std::string, int>` string-key maps for literal keys.
+- Unsupported: record/class values, iterators, range-for loops, const-reference
+  map parameters, and cross-file map-heavy APIs.
+
+## Templates
+
+- Supported: simple free-function templates with `typename`/`class` type
+  parameters, explicit calls, and narrow single-argument scalar inference.
+- Unsupported: class templates beyond recognized standard library spellings,
+  non-type parameters, specialization, overload resolution, SFINAE, variadic
+  templates, and template bodies that need unsupported parameter/container
+  lowering.
+- Known-fail coverage lives in `examples/multifile_known_fail/` and can be run
+  with `scripts/run_multifile_known_fail_example.sh`.
+
 ## Preprocessor
 
 - Supported: quoted local includes are expanded before syntax checking.

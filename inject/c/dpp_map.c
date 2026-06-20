@@ -99,6 +99,27 @@ int dpp_equal_long(const void *left, const void *right) {
   return *(const long *)left == *(const long *)right;
 }
 
+int dpp_compare_cstr(const void *left, const void *right) {
+  const char *left_value = *(const char *const *)left;
+  const char *right_value = *(const char *const *)right;
+  return strcmp(left_value, right_value);
+}
+
+size_t dpp_hash_cstr(const void *key) {
+  const unsigned char *text = (const unsigned char *)*(const char *const *)key;
+  size_t hash = 1469598103934665603ull;
+  while (*text != '\0') {
+    hash ^= (size_t)*text;
+    hash *= 1099511628211ull;
+    ++text;
+  }
+  return hash;
+}
+
+int dpp_equal_cstr(const void *left, const void *right) {
+  return dpp_compare_cstr(left, right) == 0;
+}
+
 void dpp_map_init(dpp_map *map, size_t key_size, size_t value_size, dpp_map_compare_fn compare) {
   map->entries = NULL;
   map->key_size = key_size;

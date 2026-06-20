@@ -8,6 +8,7 @@
 #include "dpp/convert/memory.h"
 #include "dpp/convert/records.h"
 #include "dpp/convert/string.h"
+#include "dpp/convert/templates.h"
 #include "dpp/convert/vector.h"
 #include "dpp/parser/parser.h"
 #include "dpp/parser/syntax_checker.h"
@@ -31,7 +32,8 @@ std::string transpile_bootstrap_subset(const std::string &source) {
     throw std::runtime_error(message.str());
   }
 
-  std::string out = convert::lower_records(parsed.text).source;
+  std::string out = convert::lower_function_templates(parsed).source;
+  out = convert::lower_records(out).source;
   convert::VectorResult vector = convert::lower_vectors(out);
   out = vector.source;
   convert::MapResult map = convert::lower_maps(out);

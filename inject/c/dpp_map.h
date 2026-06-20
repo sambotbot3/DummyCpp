@@ -28,6 +28,9 @@ typedef struct dpp_unordered_map {
 int dpp_compare_long(const void *left, const void *right);
 size_t dpp_hash_long(const void *key);
 int dpp_equal_long(const void *left, const void *right);
+int dpp_compare_cstr(const void *left, const void *right);
+size_t dpp_hash_cstr(const void *key);
+int dpp_equal_cstr(const void *left, const void *right);
 
 void dpp_map_init(dpp_map *map, size_t key_size, size_t value_size, dpp_map_compare_fn compare);
 void dpp_map_destroy(dpp_map *map);

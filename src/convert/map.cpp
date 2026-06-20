@@ -16,6 +16,9 @@ struct MapVar {
 };
 
 std::string c_type(const std::string &type) {
+  if (type == "std::string" || type == "string") {
+    return "dpp_string";
+  }
   return type == "int" ? "int" : type;
 }
 
@@ -23,7 +26,14 @@ std::string key_storage_type(const std::string &type) {
   if (type == "char" || type == "int" || type == "long") {
     return "long";
   }
+  if (type == "std::string" || type == "string") {
+    return "const char *";
+  }
   return c_type(type);
+}
+
+bool is_string_key(const std::string &type) {
+  return type == "std::string" || type == "string";
 }
 
 std::string map_type(const MapVar &var) {
@@ -46,8 +56,25 @@ std::string init_fn(const MapVar &var) {
   return var.unordered ? "dpp_unordered_map_init" : "dpp_map_init";
 }
 
+std::string key_value_expr(const std::string &expr, const std::string &type) {
+  const std::string stripped = trim(expr);
+  if (!is_string_key(type)) {
+    return stripped;
+  }
+  if (std::regex_match(stripped, std::regex(R"("([^"\\]|\\.)*")"))) {
+    return stripped;
+  }
+  if (stripped.find("dpp_string_c_str(") != std::string::npos || stripped.find(".c_str()") != std::string::npos) {
+    return stripped;
+  }
+  if (std::regex_match(stripped, std::regex(R"([A-Za-z_]\w*)"))) {
+    return "dpp_string_c_str(&" + stripped + ")";
+  }
+  return stripped;
+}
+
 std::string key_temp(const std::string &expr, const std::string &type) {
-  return "&(" + key_storage_type(type) + "){" + trim(expr) + "}";
+  return "&(" + key_storage_type(type) + "){" + key_value_expr(expr, type) + "}";
 }
 
 std::string value_expr(const std::string &name, const MapVar &var, const std::string &key) {
@@ -104,7 +131,7 @@ MapResult lower_maps(const std::string &source) {
 
     std::smatch match;
     static const std::regex map_decl_re(
-        R"(^(\s*)(?:std::)?(unordered_map|map)\s*<\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*;\s*$)");
+        R"(^(\s*)(?:std::)?(unordered_map|map)\s*<\s*(std::string|string|[A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*;\s*$)");
     if (std::regex_match(line, match, map_decl_re)) {
       result.used_map = true;
       const std::string indent = match[1].str();
@@ -112,14 +139,17 @@ MapResult lower_maps(const std::string &source) {
       const std::string name = match[5].str();
       maps[name] = var;
       out.push_back(indent + map_type(var) + " " + name + ";");
+      const std::string compare = is_string_key(var.key_type) ? "dpp_compare_cstr" : "dpp_compare_long";
+      const std::string hash = is_string_key(var.key_type) ? "dpp_hash_cstr" : "dpp_hash_long";
+      const std::string equal = is_string_key(var.key_type) ? "dpp_equal_cstr" : "dpp_equal_long";
       if (var.unordered) {
         out.push_back(indent + init_fn(var) + "(&" + name + ", sizeof(" +
                       key_storage_type(var.key_type) + "), sizeof(" + c_type(var.value_type) +
-                      "), dpp_hash_long, dpp_equal_long);");
+                      "), " + hash + ", " + equal + ");");
       } else {
         out.push_back(indent + init_fn(var) + "(&" + name + ", sizeof(" +
                       key_storage_type(var.key_type) + "), sizeof(" + c_type(var.value_type) +
-                      "), dpp_compare_long);");
+                      "), " + compare + ");");
       }
       update_scope(line);
       continue;

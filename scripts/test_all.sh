@@ -80,8 +80,8 @@ if compgen -G "${ROOT_DIR}/tests/unsupported/*.cpp" >/dev/null; then
       exit 1
     fi
 
-    if ! grep -Eq "syntax check failed|preprocess failed" "${case_dir}/dpp.stderr"; then
-      echo "FAIL unsupported/${name}: missing syntax/preprocess diagnostic" >&2
+    if ! grep -Eq "syntax check failed|preprocess failed|template instantiation failed" "${case_dir}/dpp.stderr"; then
+      echo "FAIL unsupported/${name}: missing expected diagnostic" >&2
       exit 1
     fi
 
