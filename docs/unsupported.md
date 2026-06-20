@@ -30,6 +30,23 @@ Current support is intentionally narrow:
 Regression coverage lives in `tests/cases/020_algorithm_sort.cpp` and
 `tests/cases/021_algorithm_more.cpp`.
 
+## `<string>`
+
+- Supported: local `std::string` variables with literal/copy construction,
+  assignment from literals or supported strings, `size()`, and `c_str()`.
+- Unsupported: concatenation, comparison operators, mutation APIs, substrings,
+  find/search APIs, iterators, and string fields inside records/classes.
+- Limitation: cleanup is generated for return paths in the current bootstrap
+  style; arbitrary scope-exit cleanup is still incomplete.
+
+## `<vector>`
+
+- Supported: local vectors with `push_back`, initializer lists, `size()`,
+  `empty()`, `clear()`, `back()`, and `[]` for the current supported element
+  types.
+- Unsupported: `reserve`, `resize`, `pop_back`, `front`, iterators outside
+  supported `<algorithm>` full-range calls, and nested vectors.
+
 ## Preprocessor
 
 - Supported: quoted local includes are expanded before syntax checking.

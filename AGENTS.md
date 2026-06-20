@@ -14,6 +14,11 @@ This project is building **DummyCpp**, shorthand **Dpp**: a C++ to C transpiler 
 - Place c++ std lib replacements in `inject/`. Sometimes for things like templates this may need to be macros.
 - dpp client tool will use similar flags to gcc.
 
+## Planning
+
+- When the user asks to “plan”, “plan out”, or “present a plan”, provide the plan in the current client session by default.
+- Be thorough in your thinking. Compilers are a complex topic.
+
 ## Transpiler
 
 - We will exactly match the c++ standard for now. 
@@ -57,6 +62,7 @@ This project is building **DummyCpp**, shorthand **Dpp**: a C++ to C transpiler 
 - Keep larger project notes in `docs/`.
 - Put condensed open questions only in `docs/questions.md`.
 - When a decision is made, move it from questions into `docs/decisions.md`.
+- Place common string utilities in `include/dpp/string_utils.h`
 
 ## Naming
 

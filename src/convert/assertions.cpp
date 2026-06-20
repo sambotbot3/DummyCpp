@@ -1,23 +1,11 @@
 #include "dpp/convert/assertions.h"
+#include "dpp/string_utils.h"
 
 #include <regex>
 #include <sstream>
 #include <string>
 
 namespace dpp::convert {
-namespace {
-
-std::string trim(const std::string &value) {
-  const std::string whitespace = " \t\r\n";
-  const std::size_t start = value.find_first_not_of(whitespace);
-  if (start == std::string::npos) {
-    return "";
-  }
-  const std::size_t end = value.find_last_not_of(whitespace);
-  return value.substr(start, end - start + 1);
-}
-
-} // namespace
 
 AssertionsResult lower_assertions(const std::string &source) {
   AssertionsResult result;

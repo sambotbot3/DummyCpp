@@ -1,4 +1,5 @@
 #include "dpp/convert/iostream.h"
+#include "dpp/string_utils.h"
 
 #include <cctype>
 #include <sstream>
@@ -7,20 +8,6 @@
 
 namespace dpp::convert {
 namespace {
-
-std::string trim(const std::string &value) {
-  const std::string whitespace = " \t\r\n";
-  const std::size_t start = value.find_first_not_of(whitespace);
-  if (start == std::string::npos) {
-    return "";
-  }
-  const std::size_t end = value.find_last_not_of(whitespace);
-  return value.substr(start, end - start + 1);
-}
-
-bool starts_with(const std::string &value, const std::string &prefix) {
-  return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
-}
 
 bool is_string_literal(const std::string &value) {
   return value.size() >= 2 && value.front() == '"' && value.back() == '"';
@@ -32,9 +19,14 @@ bool is_size_expression(const std::string &value) {
     return false;
   }
   return value.find(".size()") != std::string::npos ||
+         value.find("dpp_string_size(") != std::string::npos ||
          value.find("dpp_vector_size(") != std::string::npos ||
          value.find("dpp_map_size(") != std::string::npos ||
          value.find("dpp_unordered_map_size(") != std::string::npos;
+}
+
+bool is_c_string_expression(const std::string &value) {
+  return value.find("dpp_string_c_str(") != std::string::npos;
 }
 
 bool is_double_expression(const std::string &value) {
@@ -57,14 +49,6 @@ bool is_double_expression(const std::string &value) {
 
 bool is_char_literal(const std::string &value) {
   return value.size() >= 3 && value.front() == '\'' && value.back() == '\'';
-}
-
-std::string leading_indent(const std::string &line) {
-  const std::size_t first = line.find_first_not_of(" \t");
-  if (first == std::string::npos) {
-    return line;
-  }
-  return line.substr(0, first);
 }
 
 std::vector<std::string> split_cout_chain(const std::string &chain) {
@@ -111,6 +95,9 @@ std::string lower_cout_line(const std::string &line, bool &used_stdio) {
     if (part == "std::endl" || part == "endl") {
       format += "\\n";
     } else if (is_string_literal(part)) {
+      format += "%s";
+      args.push_back(part);
+    } else if (is_c_string_expression(part)) {
       format += "%s";
       args.push_back(part);
     } else if (is_size_expression(part)) {

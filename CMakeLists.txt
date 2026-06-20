@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+add_library(dpp_utils src/string_utils.cpp)
+target_include_directories(dpp_utils PUBLIC include)
+
 add_subdirectory(src/parser)
 add_subdirectory(src/convert)
 add_subdirectory(inject)
@@ -22,6 +25,10 @@ target_compile_options(dpp_parser PRIVATE
 )
 
 target_compile_options(dpp_convert PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
+)
+
+target_compile_options(dpp_utils PRIVATE
   $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
 )
 

@@ -1,8 +1,8 @@
 #include "dpp/convert/map.h"
+#include "dpp/string_utils.h"
 
 #include <map>
 #include <regex>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -14,52 +14,6 @@ struct MapVar {
   std::string value_type;
   bool unordered = false;
 };
-
-std::string trim(const std::string &value) {
-  const std::string whitespace = " \t\r\n";
-  const std::size_t start = value.find_first_not_of(whitespace);
-  if (start == std::string::npos) {
-    return "";
-  }
-  const std::size_t end = value.find_last_not_of(whitespace);
-  return value.substr(start, end - start + 1);
-}
-
-std::string leading_indent(const std::string &line) {
-  const std::size_t first = line.find_first_not_of(" \t");
-  if (first == std::string::npos) {
-    return line;
-  }
-  return line.substr(0, first);
-}
-
-std::vector<std::string> split_lines(const std::string &source) {
-  std::istringstream in(source);
-  std::vector<std::string> lines;
-  std::string line;
-  while (std::getline(in, line)) {
-    lines.push_back(line);
-  }
-  return lines;
-}
-
-std::string join_lines(const std::vector<std::string> &lines) {
-  std::ostringstream out;
-  for (const std::string &line : lines) {
-    out << line << '\n';
-  }
-  return out.str();
-}
-
-std::size_t count_char(const std::string &line, char ch) {
-  std::size_t count = 0;
-  for (const char item : line) {
-    if (item == ch) {
-      ++count;
-    }
-  }
-  return count;
-}
 
 std::string c_type(const std::string &type) {
   return type == "int" ? "int" : type;

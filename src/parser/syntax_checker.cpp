@@ -13,6 +13,7 @@ bool is_supported_include(const std::string &include) {
   return include == "#include <algorithm>" || include == "#include <iostream>" ||
          include == "#include <vector>" || include == "#include <cassert>" ||
          include == "#include <assert.h>" ||
+         include == "#include <string>" ||
          include == "#include <memory>" || include == "#include <map>" ||
          include == "#include <unordered_map>";
 }

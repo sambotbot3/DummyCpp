@@ -41,7 +41,9 @@ This first slice is intentionally tiny and friendly-input only:
 - `int main()` lowered to `int main(void)`,
 - aggregate initialization like `Point p{1, 2};`.
 - narrow `std::cout` chains with string literals, integer expressions, and `std::endl`.
-- `std::vector<int>`, `std::vector<double>`, and `std::vector<SimpleRecord>` with `push_back`, `size`, and `[]`.
+- pass-through C-compatible `if`/`else`, `while`, `do`/`while`, `break`, and `continue` control flow.
+- local `std::string` variables with literal/copy construction, assignment, `size()`, and `c_str()`.
+- `std::vector<int>`, `std::vector<double>`, and `std::vector<SimpleRecord>` with `push_back`, initializer lists, `size`, `empty`, `clear`, `back`, and `[]`.
 - method calls on vector-held class/record elements for the current simple lowering shape.
 - loop and early-return cases around vector-backed locals, with generated cleanup before returns.
 - `using namespace std;` for `cout`, `endl`, and `vector<T>`.

@@ -41,6 +41,10 @@ void dpp_vector_destroy(dpp_vector *vector) {
   vector->capacity = 0;
 }
 
+void dpp_vector_clear(dpp_vector *vector) {
+  vector->size = 0;
+}
+
 size_t dpp_vector_size(const dpp_vector *vector) {
   return vector->size;
 }

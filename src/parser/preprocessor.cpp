@@ -1,4 +1,5 @@
 #include "dpp/parser/preprocessor.h"
+#include "dpp/string_utils.h"
 
 #include <cerrno>
 #include <climits>
@@ -35,38 +36,6 @@ struct Context {
   std::map<std::string, std::vector<std::string>> injected_headers;
   std::map<std::string, bool> injected_once;
 };
-
-std::string trim(const std::string &value) {
-  const std::string whitespace = " \t\r\n";
-  const std::size_t start = value.find_first_not_of(whitespace);
-  if (start == std::string::npos) {
-    return "";
-  }
-  const std::size_t end = value.find_last_not_of(whitespace);
-  return value.substr(start, end - start + 1);
-}
-
-std::vector<std::string> split_lines(const std::string &source) {
-  std::istringstream in(source);
-  std::vector<std::string> lines;
-  std::string line;
-  while (std::getline(in, line)) {
-    lines.push_back(line);
-  }
-  return lines;
-}
-
-std::string join_lines(const std::vector<std::string> &lines) {
-  std::ostringstream out;
-  for (const std::string &line : lines) {
-    out << line << '\n';
-  }
-  return out.str();
-}
-
-bool starts_with(const std::string &value, const std::string &prefix) {
-  return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
-}
 
 std::string read_file(const std::string &path) {
   std::ifstream in(path);

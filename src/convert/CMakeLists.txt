@@ -6,9 +6,12 @@ add_library(dpp_convert
   map.cpp
   memory.cpp
   records.cpp
+  string.cpp
   vector.cpp
 )
 
 target_include_directories(dpp_convert PUBLIC
   ${PROJECT_SOURCE_DIR}/include
 )
+
+target_link_libraries(dpp_convert PRIVATE dpp_utils)

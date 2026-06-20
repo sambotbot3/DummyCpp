@@ -1,4 +1,5 @@
 #include "dpp/convert/records.h"
+#include "dpp/string_utils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -42,16 +43,6 @@ struct Record {
   std::vector<Constructor> constructors;
 };
 
-std::string trim(const std::string &value) {
-  const std::string whitespace = " \t\r\n";
-  const std::size_t start = value.find_first_not_of(whitespace);
-  if (start == std::string::npos) {
-    return "";
-  }
-  const std::size_t end = value.find_last_not_of(whitespace);
-  return value.substr(start, end - start + 1);
-}
-
 bool starts_with_at(const std::string &source, std::size_t pos, const std::string &prefix) {
   return source.size() >= pos + prefix.size() && source.compare(pos, prefix.size(), prefix) == 0;
 }
@@ -62,16 +53,6 @@ bool word_boundary_after(const std::string &source, std::size_t pos) {
   }
   const unsigned char ch = static_cast<unsigned char>(source[pos]);
   return !std::isalnum(ch) && ch != '_';
-}
-
-std::vector<std::string> split_lines(const std::string &source) {
-  std::istringstream in(source);
-  std::vector<std::string> lines;
-  std::string line;
-  while (std::getline(in, line)) {
-    lines.push_back(line);
-  }
-  return lines;
 }
 
 std::string field_name_from_decl(const std::string &decl) {
@@ -96,32 +77,6 @@ std::string replace_all(std::string value, const std::string &from, const std::s
     pos += to.size();
   }
   return value;
-}
-
-std::vector<std::string> split_commas(const std::string &value) {
-  std::vector<std::string> parts;
-  std::size_t cursor = 0;
-  int angle_depth = 0;
-  int paren_depth = 0;
-  for (std::size_t i = 0; i < value.size(); ++i) {
-    if (value[i] == '<') {
-      ++angle_depth;
-    } else if (value[i] == '>' && angle_depth > 0) {
-      --angle_depth;
-    } else if (value[i] == '(') {
-      ++paren_depth;
-    } else if (value[i] == ')' && paren_depth > 0) {
-      --paren_depth;
-    } else if (value[i] == ',' && angle_depth == 0 && paren_depth == 0) {
-      parts.push_back(trim(value.substr(cursor, i - cursor)));
-      cursor = i + 1;
-    }
-  }
-  const std::string tail = trim(value.substr(cursor));
-  if (!tail.empty()) {
-    parts.push_back(tail);
-  }
-  return parts;
 }
 
 std::vector<VectorParam> collect_vector_ref_params(const std::string &params) {

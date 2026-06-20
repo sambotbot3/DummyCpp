@@ -12,3 +12,5 @@ target_include_directories(dpp_parser PUBLIC
 target_include_directories(dpp_parser PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+target_link_libraries(dpp_parser PRIVATE dpp_utils)
