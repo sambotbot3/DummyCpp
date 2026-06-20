@@ -14,6 +14,7 @@ This project is building **DummyCpp**, shorthand **Dpp**: a C++ to C transpiler 
 - Place c++ std lib replacements in `inject/`. Sometimes for things like templates this may need to be macros.
 - dpp client tool will use similar flags to gcc.
 - It is not your primary job to detect syntax errors.
+- All runtime c++ features are to be handled by the compiler. This requires much better memory tracking and function pointer tracking.
 
 ## Planning
 
@@ -33,7 +34,8 @@ This project is building **DummyCpp**, shorthand **Dpp**: a C++ to C transpiler 
 
 - Target C++11 standard support first.
 - Most syntax errors will be ignored.
-- Access modifiers will be ignored.
+- Access modifiers will be ignored, everything is public in c.
+- Ignore barely used, overly complicated c++ features. 
 - Delay:
   - exceptions,
   - RTTI,

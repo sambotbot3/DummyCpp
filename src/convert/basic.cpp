@@ -20,5 +20,35 @@ std::string lower_aggregate_initializers(const std::string &source) {
   return std::regex_replace(source, aggregate_re, "$1 $2 = ($1){$3};");
 }
 
-} // namespace dpp::convert
+std::string lower_cpp_surface_types(const std::string &source) {
+  std::string out = source;
+  out = std::regex_replace(
+      out,
+      std::regex(
+          R"(\btypedef\s+(?:std::)?map\s*<\s*(?:std::string|string|[A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*;)"),
+      "typedef dpp_map $2;");
+  out = std::regex_replace(
+      out,
+      std::regex(R"(\btypedef\s+(?:std::)?vector\s*<\s*([A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*;)"),
+      "typedef dpp_vector $2;");
+  out = std::regex_replace(
+      out,
+      std::regex(R"(\b(?:std::)?map\s*<\s*(?:std::string|string|[A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*>)"),
+      "dpp_map");
+  out = std::regex_replace(
+      out, std::regex(R"(\b(?:std::)?vector\s*<\s*([A-Za-z_]\w*)\s*>)"), "dpp_vector");
+  out = std::regex_replace(out, std::regex(R"(\bstd::string\b)"), "dpp_string");
+  out = std::regex_replace(
+      out, std::regex(R"(\bconst\s+dpp_string\s*&\s*([A-Za-z_]\w*))"), "const char *$1");
+  out = std::regex_replace(
+      out, std::regex(R"(\bconst\s+([A-Za-z_]\w*)\s*&\s*([A-Za-z_]\w*))"), "const $1 *$2");
+  out = std::regex_replace(
+      out, std::regex(R"(\b([A-Za-z_]\w*)\s*&\s*([A-Za-z_]\w*))"), "$1 *$2");
+  out = std::regex_replace(out, std::regex(R"(static_cast\s*<\s*([^>]+)\s*>\s*\(([^;]*)\))"),
+                           "(($1)($2))");
+  out = std::regex_replace(out, std::regex(R"(\b([A-Za-z_]\w*)\.size\s*\(\s*\))"),
+                           "dpp_vector_size(&$1)");
+  return out;
+}
 
+} // namespace dpp::convert

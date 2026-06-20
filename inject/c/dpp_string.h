@@ -10,6 +10,11 @@ typedef struct dpp_string {
 void dpp_string_init(dpp_string *string);
 void dpp_string_init_cstr(dpp_string *string, const char *value);
 void dpp_string_assign_cstr(dpp_string *string, const char *value);
+void dpp_string_append_cstr(dpp_string *string, const char *value);
 void dpp_string_destroy(dpp_string *string);
 size_t dpp_string_size(const dpp_string *string);
 const char *dpp_string_c_str(const dpp_string *string);
+int dpp_string_equal(const dpp_string *left, const dpp_string *right);
+int dpp_string_equal_cstr(const dpp_string *left, const char *right);
+int dpp_string_compare(const dpp_string *left, const dpp_string *right);
+int dpp_string_compare_cstr(const dpp_string *left, const char *right);

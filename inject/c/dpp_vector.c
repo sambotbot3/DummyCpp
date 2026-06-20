@@ -14,7 +14,7 @@ static void dpp_vector_abort_bounds(void) {
   abort();
 }
 
-static void dpp_vector_reserve(dpp_vector *vector, size_t capacity) {
+void dpp_vector_reserve(dpp_vector *vector, size_t capacity) {
   if (capacity <= vector->capacity) {
     return;
   }
@@ -45,6 +45,27 @@ void dpp_vector_clear(dpp_vector *vector) {
   vector->size = 0;
 }
 
+void dpp_vector_resize(dpp_vector *vector, size_t size) {
+  const size_t old_size = vector->size;
+  dpp_vector_reserve(vector, size);
+  if (size > old_size) {
+    memset((char *)vector->data + old_size * vector->elem_size, 0,
+           (size - old_size) * vector->elem_size);
+  }
+  vector->size = size;
+}
+
+void dpp_vector_resize_fill(dpp_vector *vector, size_t size, const void *elem) {
+  const size_t old_size = vector->size;
+  dpp_vector_reserve(vector, size);
+  if (size > old_size) {
+    for (size_t index = old_size; index < size; ++index) {
+      memcpy((char *)vector->data + index * vector->elem_size, elem, vector->elem_size);
+    }
+  }
+  vector->size = size;
+}
+
 size_t dpp_vector_size(const dpp_vector *vector) {
   return vector->size;
 }
@@ -70,4 +91,11 @@ void dpp_vector_push_back(dpp_vector *vector, const void *elem) {
   }
   memcpy((char *)vector->data + vector->size * vector->elem_size, elem, vector->elem_size);
   vector->size += 1;
+}
+
+void dpp_vector_pop_back(dpp_vector *vector) {
+  if (vector->size == 0) {
+    dpp_vector_abort_bounds();
+  }
+  vector->size -= 1;
 }

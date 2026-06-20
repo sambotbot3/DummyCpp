@@ -18,6 +18,9 @@ bool is_size_expression(const std::string &value) {
       value.find("dpp_vector_const_at(") != std::string::npos) {
     return false;
   }
+  if (value.find("== 0") != std::string::npos || value.find("!= 0") != std::string::npos) {
+    return false;
+  }
   return value.find(".size()") != std::string::npos ||
          value.find("dpp_string_size(") != std::string::npos ||
          value.find("dpp_vector_size(") != std::string::npos ||
@@ -26,7 +29,8 @@ bool is_size_expression(const std::string &value) {
 }
 
 bool is_c_string_expression(const std::string &value) {
-  return value.find("dpp_string_c_str(") != std::string::npos;
+  return value.find("dpp_string_c_str(") != std::string::npos ||
+         value.find("dpp_map_key_at(") != std::string::npos || value.find("->name") != std::string::npos;
 }
 
 bool is_double_expression(const std::string &value) {
@@ -99,7 +103,12 @@ std::string lower_cout_line(const std::string &line, bool &used_stdio) {
       args.push_back(part);
     } else if (is_c_string_expression(part)) {
       format += "%s";
-      args.push_back(part);
+      if (part.find("->name") != std::string::npos &&
+          part.find("dpp_string_c_str(") == std::string::npos) {
+        args.push_back("dpp_string_c_str(&" + part + ")");
+      } else {
+        args.push_back(part);
+      }
     } else if (is_size_expression(part)) {
       format += "%zu";
       args.push_back(part);

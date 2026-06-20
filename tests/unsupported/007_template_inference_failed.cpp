@@ -2,12 +2,15 @@ struct Box {
   int value;
 };
 
+Box make_box() {
+  return Box{3};
+}
+
 template <typename T>
 T identity(T value) {
   return value;
 }
 
 int main() {
-  Box box{3};
-  return identity(box).value;
+  return identity(make_box()).value;
 }

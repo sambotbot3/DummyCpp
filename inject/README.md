@@ -10,10 +10,12 @@ Current support:
 - `c/dpp_vector.h` and `c/dpp_vector.c` provide the reusable backing store for
   supported `std::vector<T>` lowerings.
 - `c/dpp_map.h` and `c/dpp_map.c` provide explicit runtime backing for the
-  supported `std::map<K, int>` and `std::unordered_map<K, int>` lowerings where
-  `K` is `char`, `int`, or `long`.
+  supported `std::map<K, V>` and `std::unordered_map<K, V>` lowerings where
+  keys are currently integral or C-string-backed, including narrow indexed
+  key/value access used to lower map range-for loops.
 - `c/dpp_string.h` and `c/dpp_string.c` provide explicit runtime backing for
-  selected `std::string` local variables and `c_str()`/`size()` calls.
+  selected `std::string` local variables, `c_str()`/`size()` calls, and narrow
+  equality/ordering comparisons and append-style mutation.
 - `c/dpp_algorithm.h` provides header-only macro lowerings for selected
   `<algorithm>` calls: `std::sort`, `std::reverse`, and `std::fill` over
   supported `std::vector<T>` ranges, plus `std::min`, `std::max`, and

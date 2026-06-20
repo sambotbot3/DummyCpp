@@ -173,6 +173,21 @@ void *dpp_map_get_or_insert(dpp_map *map, const void *key) {
   return entries[pos].value;
 }
 
+const void *dpp_map_key_at(const dpp_map *map, size_t index) {
+  const dpp_map_entry *entries = (const dpp_map_entry *)map->entries;
+  return entries[index].key;
+}
+
+void *dpp_map_value_at(dpp_map *map, size_t index) {
+  dpp_map_entry *entries = dpp_map_entries(map);
+  return entries[index].value;
+}
+
+const void *dpp_map_const_value_at(const dpp_map *map, size_t index) {
+  const dpp_map_entry *entries = (const dpp_map_entry *)map->entries;
+  return entries[index].value;
+}
+
 void dpp_unordered_map_init(dpp_unordered_map *map, size_t key_size, size_t value_size,
                             dpp_map_hash_fn hash, dpp_map_equal_fn equal) {
   map->entries = NULL;
@@ -226,4 +241,34 @@ void *dpp_unordered_map_get_or_insert(dpp_unordered_map *map, const void *key) {
   entries[slot].occupied = 1;
   map->size += 1;
   return entries[slot].value;
+}
+
+static size_t dpp_unordered_map_slot_at(const dpp_unordered_map *map, size_t index) {
+  const dpp_unordered_map_entry *entries = (const dpp_unordered_map_entry *)map->entries;
+  size_t seen = 0;
+  for (size_t slot = 0; slot < map->capacity; ++slot) {
+    if (!entries[slot].occupied) {
+      continue;
+    }
+    if (seen == index) {
+      return slot;
+    }
+    ++seen;
+  }
+  return map->capacity;
+}
+
+const void *dpp_unordered_map_key_at(const dpp_unordered_map *map, size_t index) {
+  const dpp_unordered_map_entry *entries = (const dpp_unordered_map_entry *)map->entries;
+  return entries[dpp_unordered_map_slot_at(map, index)].key;
+}
+
+void *dpp_unordered_map_value_at(dpp_unordered_map *map, size_t index) {
+  dpp_unordered_map_entry *entries = dpp_unordered_map_entries(map);
+  return entries[dpp_unordered_map_slot_at(map, index)].value;
+}
+
+const void *dpp_unordered_map_const_value_at(const dpp_unordered_map *map, size_t index) {
+  const dpp_unordered_map_entry *entries = (const dpp_unordered_map_entry *)map->entries;
+  return entries[dpp_unordered_map_slot_at(map, index)].value;
 }

@@ -536,8 +536,48 @@ std::string lower_constructor_locals(const std::string &source,
   std::string out = source;
   for (const auto &entry : records) {
     const std::string &type = entry.first;
-    const std::regex ctor_decl_re("\\b" + type + R"(\s+([A-Za-z_]\w*)\s*\(([^;{}]*)\)\s*;)");
-    out = std::regex_replace(out, ctor_decl_re, type + " $1;\n  " + type + "_init(&$1, $2);");
+    const std::regex ctor_decl_re("(^|\\n)([ \\t]+)" + type +
+                                  R"(\s+([A-Za-z_]\w*)\s*\(([^;{}]*)\)\s*;)");
+    out = std::regex_replace(out, ctor_decl_re,
+                             "$1$2" + type + " $3;\n$2" + type + "_init(&$3, $4);");
+  }
+  return out;
+}
+
+bool is_string_field_decl(const std::string &field) {
+  return std::regex_search(field, std::regex(R"(\b(?:std::)?string\s+[A-Za-z_]\w*\s*;)"));
+}
+
+std::string lower_aggregate_locals(const std::string &source,
+                                   const std::map<std::string, Record> &records) {
+  std::string out = source;
+  for (const auto &entry : records) {
+    const Record &record = entry.second;
+    const std::regex aggregate_re("(^|\\n)([ \\t]+)" + record.name +
+                                  R"(\s+([A-Za-z_]\w*)\s*\{([^;{}]*)\}\s*;)");
+    std::string rebuilt;
+    std::size_t cursor = 0;
+    for (std::sregex_iterator it(out.begin(), out.end(), aggregate_re), end; it != end; ++it) {
+      const std::smatch match = *it;
+      rebuilt.append(out, cursor, static_cast<std::size_t>(match.position()) - cursor);
+      const std::string prefix = match[1].str();
+      const std::string indent = match[2].str();
+      const std::string name = match[3].str();
+      const std::vector<std::string> args = split_commas(match[4].str());
+      rebuilt += prefix + indent + record.name + " " + name + ";";
+      for (std::size_t index = 0; index < args.size() && index < record.field_names.size(); ++index) {
+        const std::string field = record.field_names[index];
+        if (index < record.fields.size() && is_string_field_decl(record.fields[index])) {
+          rebuilt += "\n" + indent + "dpp_string_init_cstr(&" + name + "." + field + ", " +
+                     trim(args[index]) + ");";
+        } else {
+          rebuilt += "\n" + indent + name + "." + field + " = " + trim(args[index]) + ";";
+        }
+      }
+      cursor = static_cast<std::size_t>(match.position() + match.length());
+    }
+    rebuilt.append(out, cursor, std::string::npos);
+    out = rebuilt;
   }
   return out;
 }
@@ -604,6 +644,7 @@ RecordsResult lower_records(const std::string &source) {
   std::map<std::string, Record> records;
   result.source = lower_record_declarations(source, records, result.lowered_records);
   result.source = lower_constructor_locals(result.source, records);
+  result.source = lower_aggregate_locals(result.source, records);
   result.source = lower_method_calls(result.source, records);
   return result;
 }

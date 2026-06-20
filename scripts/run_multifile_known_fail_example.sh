@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build"
+INJECT_LIB="${BUILD_DIR}/inject/libdpp_inject.a"
 EXAMPLE_DIR="${ROOT_DIR}/examples/multifile_known_fail"
 CASE_DIR="${BUILD_DIR}/examples/multifile_known_fail"
 
@@ -45,9 +46,22 @@ for source in "${sources[@]}"; do
   fi
 done
 
-if [[ "${failure_count}" -eq 0 ]]; then
-  echo "All known-fail sources transpiled successfully; update this fixture to compile generated C."
-  exit 1
+if [[ "${failure_count}" -gt 0 ]]; then
+  echo "PASS multifile_known_fail example documents current unsupported coverage"
+  exit 0
 fi
 
-echo "PASS multifile_known_fail example documents current unsupported coverage"
+c_inputs=()
+for source in "${sources[@]}"; do
+  c_inputs+=("${CASE_DIR}/generated/${source}.c")
+done
+
+cc -std=c11 -I "${ROOT_DIR}/inject/c" "${c_inputs[@]}" "${INJECT_LIB}" -o "${CASE_DIR}/known_fail.c.exe"
+"${CASE_DIR}/known_fail.c.exe" >"${CASE_DIR}/c.stdout"
+c_status=$?
+printf '%s\n' "${c_status}" >"${CASE_DIR}/c.status"
+
+diff -u "${CASE_DIR}/cpp.stdout" "${CASE_DIR}/c.stdout"
+diff -u "${CASE_DIR}/cpp.status" "${CASE_DIR}/c.status"
+
+echo "PASS multifile_known_fail example matches generated C"

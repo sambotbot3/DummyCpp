@@ -51,6 +51,7 @@ std::string transpile_bootstrap_subset(const std::string &source) {
   out = convert::lower_structs(out);
   out = convert::lower_main_signature(out);
   out = convert::lower_aggregate_initializers(out);
+  out = convert::lower_cpp_surface_types(out);
 
   const std::string includes = iostream.used_stdio ? "#include <stdio.h>\n\n" : "";
   const std::string assert_include = assertions.used_assert ? "#include <assert.h>\n" : "";

@@ -35,6 +35,18 @@ void dpp_string_assign_cstr(dpp_string *string, const char *value) {
   string->data = copy;
 }
 
+void dpp_string_append_cstr(dpp_string *string, const char *value) {
+  const char *suffix = value == NULL ? "" : value;
+  const size_t suffix_size = strlen(suffix);
+  char *data = (char *)realloc(string->data, string->size + suffix_size + 1);
+  if (data == NULL) {
+    dpp_string_abort_oom();
+  }
+  memcpy(data + string->size, suffix, suffix_size + 1);
+  string->data = data;
+  string->size += suffix_size;
+}
+
 void dpp_string_destroy(dpp_string *string) {
   free(string->data);
   string->data = NULL;
@@ -47,4 +59,22 @@ size_t dpp_string_size(const dpp_string *string) {
 
 const char *dpp_string_c_str(const dpp_string *string) {
   return string->data == NULL ? "" : string->data;
+}
+
+int dpp_string_equal(const dpp_string *left, const dpp_string *right) {
+  return strcmp(dpp_string_c_str(left), dpp_string_c_str(right)) == 0;
+}
+
+int dpp_string_equal_cstr(const dpp_string *left, const char *right) {
+  const char *safe_right = right == NULL ? "" : right;
+  return strcmp(dpp_string_c_str(left), safe_right) == 0;
+}
+
+int dpp_string_compare(const dpp_string *left, const dpp_string *right) {
+  return strcmp(dpp_string_c_str(left), dpp_string_c_str(right));
+}
+
+int dpp_string_compare_cstr(const dpp_string *left, const char *right) {
+  const char *safe_right = right == NULL ? "" : right;
+  return strcmp(dpp_string_c_str(left), safe_right);
 }

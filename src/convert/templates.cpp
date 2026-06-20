@@ -18,6 +18,13 @@ struct Instantiation {
   std::vector<std::string> types;
 };
 
+struct RecordField {
+  std::string type;
+  std::string name;
+};
+
+using RecordFields = std::map<std::string, std::vector<RecordField>>;
+
 std::string normalize_type(std::string type) {
   type = trim(type);
   type = std::regex_replace(type, std::regex(R"(\bstd::string\b)"), "string");
@@ -71,15 +78,55 @@ std::string replace_template_type(std::string text,
   return text;
 }
 
-bool has_unsupported_instantiated_parameter(const std::string &type) {
-  return type.find("std::map") != std::string::npos ||
-         type.find("std::unordered_map") != std::string::npos ||
-         type.find("std::vector") != std::string::npos;
-}
-
 std::string lower_static_casts(std::string text) {
   static const std::regex cast_re(R"(static_cast\s*<\s*([^>]+)\s*>\s*\(\s*([^()]+)\s*\))");
   return std::regex_replace(text, cast_re, "(($1)($2))");
+}
+
+bool is_scalar_type(const std::string &type) {
+  const std::string normalized = normalize_type(type);
+  return normalized == "int" || normalized == "long" || normalized == "char" ||
+         normalized == "bool" || normalized == "double" || normalized == "float";
+}
+
+std::string c_parameter_type(std::string type) {
+  type = trim(type);
+  std::smatch map_ref_match;
+  if (std::regex_match(type, map_ref_match,
+                       std::regex(R"(^std::map\s*<\s*([^,]+)\s*,\s*([^>]+)\s*>\s*&$)"))) {
+    return "dpp_map *";
+  }
+  if (std::regex_match(type, map_ref_match,
+                       std::regex(R"(^const\s+std::map\s*<\s*([^,]+)\s*,\s*([^>]+)\s*>\s*&$)"))) {
+    return "const dpp_map *";
+  }
+  std::smatch ref_match;
+  if (std::regex_match(type, ref_match,
+                       std::regex(R"(^const\s+([A-Za-z_]\w*)\s*&$)"))) {
+    const std::string inner = normalize_type(ref_match[1].str());
+    if (is_scalar_type(inner)) {
+      return render_type(inner);
+    }
+    if (inner == "string") {
+      return "const char *";
+    }
+    return "const " + render_type(inner) + " *";
+  }
+  return type;
+}
+
+std::string lower_reference_body(std::string body,
+                                 const std::vector<parser::FunctionParameter> &parameters,
+                                 const std::map<std::string, std::string> &mapping) {
+  for (const parser::FunctionParameter &parameter : parameters) {
+    const std::string type = replace_template_type(parameter.type, mapping);
+    if (std::regex_match(trim(type), std::regex(R"(^const\s+[A-Za-z_]\w*\s*&$)")) &&
+        !is_scalar_type(std::regex_replace(trim(type), std::regex(R"(^const\s+|\s*&$)"), ""))) {
+      body = std::regex_replace(body, std::regex("\\b" + parameter.name + R"(\.)"),
+                                parameter.name + "->");
+    }
+  }
+  return body;
 }
 
 std::string render_instantiation(const Instantiation &instantiation) {
@@ -93,19 +140,38 @@ std::string render_instantiation(const Instantiation &instantiation) {
   for (std::size_t index = 0; index < decl.function.parameters.size(); ++index) {
     const parser::FunctionParameter &parameter = decl.function.parameters[index];
     const std::string parameter_type = replace_template_type(parameter.type, mapping);
-    if (has_unsupported_instantiated_parameter(parameter_type)) {
-      throw std::runtime_error("template instantiation failed: unsupported parameter type '" +
-                               parameter_type + "' in " + decl.function.name);
-    }
     if (index != 0) {
       out << ", ";
     }
-    out << parameter_type << " " << parameter.name;
+    out << c_parameter_type(parameter_type) << " " << parameter.name;
   }
 
   out << ") {";
-  out << lower_static_casts(replace_template_type(decl.function.body, mapping));
+  std::string body = replace_template_type(decl.function.body, mapping);
+  body = lower_reference_body(body, decl.function.parameters, mapping);
+  out << lower_static_casts(body);
   out << "\n}\n";
+  return out.str();
+}
+
+std::string render_prototype(const Instantiation &instantiation) {
+  const parser::FunctionTemplateDecl &decl = *instantiation.decl;
+  const std::map<std::string, std::string> mapping = template_mapping(decl, instantiation.types);
+
+  std::ostringstream out;
+  out << replace_template_type(decl.function.return_type, mapping) << " "
+      << instantiated_name(decl, instantiation.types) << "(";
+
+  for (std::size_t index = 0; index < decl.function.parameters.size(); ++index) {
+    const parser::FunctionParameter &parameter = decl.function.parameters[index];
+    const std::string parameter_type = replace_template_type(parameter.type, mapping);
+    if (index != 0) {
+      out << ", ";
+    }
+    out << c_parameter_type(parameter_type) << " " << parameter.name;
+  }
+
+  out << ");\n";
   return out.str();
 }
 
@@ -130,6 +196,8 @@ void add_instantiation(std::vector<Instantiation> &instantiations, Instantiation
   instantiations.push_back(std::move(instantiation));
 }
 
+std::string generated_instantiations(const std::vector<Instantiation> &instantiations);
+
 std::vector<std::string> split_template_args(const std::string &text) {
   std::vector<std::string> parts;
   for (const std::string &part : split_commas(text)) {
@@ -138,23 +206,75 @@ std::vector<std::string> split_template_args(const std::string &text) {
   return parts;
 }
 
+std::string field_name_from_decl(std::string decl) {
+  decl = trim(decl);
+  if (!decl.empty() && decl.back() == ';') {
+    decl.pop_back();
+  }
+  const std::size_t last_space = decl.find_last_of(" \t*&");
+  if (last_space == std::string::npos) {
+    return decl;
+  }
+  return trim(decl.substr(last_space + 1));
+}
+
+std::string field_type_from_decl(const std::string &decl, const std::string &name) {
+  std::string type = trim(decl);
+  if (!type.empty() && type.back() == ';') {
+    type.pop_back();
+  }
+  const std::size_t name_at = type.rfind(name);
+  if (name_at == std::string::npos) {
+    return "";
+  }
+  type = trim(type.substr(0, name_at));
+  while (!type.empty() && (type.back() == '&' || type.back() == '*')) {
+    type.pop_back();
+    type = trim(type);
+  }
+  return normalize_type(type);
+}
+
+RecordFields collect_record_fields(const std::string &source) {
+  RecordFields records;
+  static const std::regex record_re(R"(\b(?:struct|class)\s+([A-Za-z_]\w*)[^{;]*\{([^}]*)\}\s*;)");
+  static const std::regex field_re(
+      R"(^\s*((?:std::string|string)|int|long|char|bool|double|float|[A-Z][A-Za-z_0-9]*)\s+[A-Za-z_]\w*\s*;\s*$)");
+  for (std::sregex_iterator it(source.begin(), source.end(), record_re), end; it != end; ++it) {
+    const std::string record_name = (*it)[1].str();
+    const std::string body = (*it)[2].str();
+    std::vector<RecordField> fields;
+    for (const std::string &line : split_lines(body)) {
+      std::smatch field_match;
+      if (!std::regex_match(line, field_match, field_re)) {
+        continue;
+      }
+      const std::string name = field_name_from_decl(line);
+      const std::string type = field_type_from_decl(line, name);
+      if (!name.empty() && !type.empty()) {
+        fields.push_back({type, name});
+      }
+    }
+    records[record_name] = fields;
+  }
+  return records;
+}
+
 std::map<std::string, std::string> collect_simple_value_types(const std::string &source) {
   std::map<std::string, std::string> types;
   static const std::regex decl_re(
-      R"(\b(?:const\s+)?(?:(std::string|string)|int|long|char|bool|double|float)\s+([A-Za-z_]\w*))");
+      R"(\b(?:const\s+)?((?:std::string|string)|int|long|char|bool|double|float|[A-Z][A-Za-z_0-9]*)\s*(?:[&*]\s*)?([A-Za-z_]\w*))");
   for (std::sregex_iterator it(source.begin(), source.end(), decl_re), end; it != end; ++it) {
-    const std::string full = (*it)[0].str();
+    const std::string type = (*it)[1].str();
     const std::string name = (*it)[2].str();
-    std::smatch type_match;
-    if (std::regex_search(full, type_match,
-                          std::regex(R"((std::string|string|int|long|char|bool|double|float))"))) {
-      types[name] = normalize_type(type_match[1].str());
-    }
+    types[name] = normalize_type(type);
   }
   return types;
 }
 
-std::string infer_simple_type(const std::string &expr, const std::map<std::string, std::string> &types) {
+std::string infer_simple_type(const std::string &expr,
+                              const std::map<std::string, std::string> &types,
+                              const RecordFields &records) {
   const std::string value = trim(expr);
   if (std::regex_match(value, std::regex(R"(-?[0-9]+)"))) {
     return "int";
@@ -168,6 +288,23 @@ std::string infer_simple_type(const std::string &expr, const std::map<std::strin
   const auto found = types.find(value);
   if (found != types.end()) {
     return found->second;
+  }
+  std::smatch member_match;
+  if (std::regex_match(value, member_match,
+                       std::regex(R"(([A-Za-z_]\w*)(?:\.|->)([A-Za-z_]\w*))"))) {
+    const auto object_type = types.find(member_match[1].str());
+    if (object_type == types.end()) {
+      return "";
+    }
+    const auto record = records.find(object_type->second);
+    if (record == records.end()) {
+      return "";
+    }
+    for (const RecordField &field : record->second) {
+      if (field.name == member_match[2].str()) {
+        return field.type;
+      }
+    }
   }
   return "";
 }
@@ -200,6 +337,7 @@ collect_instantiations(const parser::ParsedSource &parsed, const std::string &so
   }
 
   const std::map<std::string, std::string> value_types = collect_simple_value_types(source_without_defs);
+  const RecordFields records = collect_record_fields(source_without_defs);
   for (const parser::FunctionTemplateDecl &decl : parsed.function_templates) {
     if (!can_infer_single_parameter_call(decl)) {
       continue;
@@ -209,13 +347,30 @@ collect_instantiations(const parser::ParsedSource &parsed, const std::string &so
     for (std::sregex_iterator it(source_without_defs.begin(), source_without_defs.end(), inferred_call),
          end;
          it != end; ++it) {
-      const std::string inferred = infer_simple_type((*it)[1].str(), value_types);
+      const std::string inferred = infer_simple_type((*it)[1].str(), value_types, records);
       if (!inferred.empty()) {
         add_instantiation(instantiations, {&decl, {inferred}});
       }
     }
   }
 
+  return instantiations;
+}
+
+std::vector<Instantiation> collect_all_instantiations(const parser::ParsedSource &parsed,
+                                                      const std::string &source_without_defs) {
+  std::vector<Instantiation> instantiations;
+  std::string scan_source = source_without_defs;
+  for (int iteration = 0; iteration < 8; ++iteration) {
+    const std::size_t before = instantiations.size();
+    for (const Instantiation &instantiation : collect_instantiations(parsed, scan_source)) {
+      add_instantiation(instantiations, instantiation);
+    }
+    if (instantiations.size() == before) {
+      break;
+    }
+    scan_source = source_without_defs + "\n" + generated_instantiations(instantiations);
+  }
   return instantiations;
 }
 
@@ -257,7 +412,25 @@ std::string generated_instantiations(const std::vector<Instantiation> &instantia
   for (const Instantiation &instantiation : instantiations) {
     out << render_instantiation(instantiation) << "\n";
   }
+  return replace_calls(out.str(), instantiations);
+}
+
+std::string generated_prototypes(const std::vector<Instantiation> &instantiations) {
+  std::ostringstream out;
+  for (const Instantiation &instantiation : instantiations) {
+    out << render_prototype(instantiation);
+  }
   return out.str();
+}
+
+std::size_t first_function_definition_offset(const std::string &source) {
+  static const std::regex function_def_re(
+      R"((^|\n)[ \t]*(?:[A-Za-z_]\w*(?:::[A-Za-z_]\w*)?|std::[A-Za-z_]\w*|[A-Za-z_]\w*\s*<[^;\n{}]+>)\s+[A-Za-z_]\w*\s*\([^;\n{}]*\)\s*\{)");
+  std::smatch match;
+  if (!std::regex_search(source, match, function_def_re)) {
+    return source.size();
+  }
+  return static_cast<std::size_t>(match.position()) + (match[1].matched ? match[1].length() : 0);
 }
 
 void reject_remaining_template_calls(const parser::ParsedSource &parsed, const std::string &source) {
@@ -280,20 +453,14 @@ TemplateResult lower_function_templates(const parser::ParsedSource &parsed) {
   }
 
   std::string source = remove_template_definitions(parsed);
-  const std::vector<Instantiation> instantiations = collect_instantiations(parsed, source);
+  const std::vector<Instantiation> instantiations = collect_all_instantiations(parsed, source);
   source = replace_calls(source, instantiations);
   reject_remaining_template_calls(parsed, source);
 
   const std::string generated = generated_instantiations(instantiations);
   if (!generated.empty()) {
-    std::size_t insert_at = parsed.function_templates.front().range.begin.offset;
-    for (const parser::FunctionTemplateDecl &decl : parsed.function_templates) {
-      insert_at = std::min(insert_at, decl.range.begin.offset);
-    }
-    if (insert_at > source.size()) {
-      insert_at = 0;
-    }
-    source.insert(insert_at, generated);
+    source.insert(first_function_definition_offset(source), generated_prototypes(instantiations));
+    source += "\n" + generated;
   }
 
   result.source = source;

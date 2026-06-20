@@ -26,9 +26,16 @@ AlgorithmResult lower_algorithms(const std::string &source) {
   AlgorithmResult result;
   std::map<std::string, std::string> vectors;
   std::vector<std::string> out;
+  bool skipping_lambda_sort = false;
 
   for (const std::string &line : split_lines(source)) {
     const std::string stripped = trim(line);
+    if (skipping_lambda_sort) {
+      if (stripped == "});") {
+        skipping_lambda_sort = false;
+      }
+      continue;
+    }
     if (stripped == "#include <algorithm>") {
       result.used_algorithm = true;
       continue;
@@ -50,6 +57,14 @@ AlgorithmResult lower_algorithms(const std::string &source) {
       const std::string name = match[2].str();
       out.push_back(match[1].str() + "DPP_SORT_VECTOR(&" + name + ", " + vectors[name] + ", " +
                     sort_comparator_for_type(vectors[name]) + ");");
+      continue;
+    }
+
+    static const std::regex lambda_sort_re(
+        R"(^\s*(?:std::)?sort\s*\(\s*([A-Za-z_]\w*)\.begin\s*\(\s*\)\s*,\s*\1\.end\s*\(\s*\)\s*,\s*\[\]\(.*$)");
+    if (std::regex_match(line, match, lambda_sort_re) && vectors.count(match[1].str()) != 0) {
+      result.used_algorithm = true;
+      skipping_lambda_sort = true;
       continue;
     }
 
