@@ -1,5 +1,6 @@
 add_library(dpp_convert
   algorithm.cpp
+  assertions.cpp
   basic.cpp
   iostream.cpp
   map.cpp

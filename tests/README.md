@@ -11,8 +11,10 @@ The primary test oracle is behavioral parity:
 
 Run all tests with `scripts/test_all.sh`.
 
-Each supported test case lives in `tests/cases/*.cpp`. The later cases are intentionally
-longer and combine helpers, records/classes, vectors, loops, and multiple return paths.
+Each supported test case lives in `tests/cases/*.cpp`. The numeric prefixes keep the
+smallest required features first: `cout`/`printf`, arithmetic, assertions, then
+records/classes and runtime-backed containers. The later cases are intentionally longer
+and combine helpers, records/classes, vectors, loops, and multiple return paths.
 
 Unsupported-feature fixtures live in `tests/unsupported/*.cpp`. Those pass when `dpp`
 rejects them with a syntax/support diagnostic.

@@ -1,33 +1,32 @@
 # AGENTS.md - DummyCpp
 
-This project is building **DummyCpp**, shorthand **Dpp**: a small C++ to C transpiler written in C++.
+This project is building **DummyCpp**, shorthand **Dpp**: a C++ to C transpiler written in C++.
 
 ## Product Direction
 
-- Start small and make real programs transpile to C and compile.
+- Use C++ for the dpp transpiler implementation.
 - Prefer working transformations over complete C++ syntax validation in early milestones.
-- Ignore difficult C++ portions initially; document gaps clearly and continue building useful coverage.
+- Ignore difficult C++ portions initially; document gaps clearly but concisely in `docs/unsupported.md` and continue building useful coverage.
 - Progressively add more of the C++ standard library by lowering it to C helpers/runtime code.
-- Use open source resources when possible: existing parsers, compiler frontends, ABI notes, libc/libstdc++/LLVM/Clang references, tiny C++ interpreters/transpilers, and test suites when licenses permit.
-- Keep generated C readable enough to inspect, but prefer compact output when there is a tradeoff.
+- Try to keep generated C readable enough to inspect.
 - Objects/classes should lower to C structs with no hidden object overhead beyond fields and explicit helper functions.
 - Favor zero-cost or explicit-cost translations. If a feature needs runtime support, make that support visible and documented.
-- Transpilation should preserve zero-cost overhead where possible; any unavoidable runtime overhead must be explicit in generated C and documented.
+- Place c++ std lib replacements in `inject/`. Sometimes for things like templates this may need to be macros.
+
+## Transpiler
+
+- We will exactly match the c++ standard for now. 
+- the prepocessor will do nothing for now.
+- the lexer is re2c.
+- the parser will be handwritten:
+  - recursive descent
+  - Pratt expressions
 
 ## Early Technical Bias
 
-- Use C++ for the transpiler implementation.
-- Use a Clang-based frontend for now. Clang/libTooling/libclang dependencies are acceptable if they get real C++ parsing moving faster.
-- Target C++11 source support first.
-- First examples should be small.
-- First target should be a constrained C++11 subset:
-  - primitive types, pointers, references where simple,
-  - functions,
-  - structs/classes with fields and simple methods,
-  - constructors/destructors only when they can be lowered explicitly,
-  - namespaces as name mangling,
-  - simple templates only after non-template code works,
-  - a tiny selected `std::` namespace standard-library subset implemented in Dpp runtime headers/sources.
+- Target C++11 standard support first.
+- Most syntax errors will be ignored.
+- Access modifiers will be ignored.
 - Delay:
   - exceptions,
   - RTTI,
@@ -38,22 +37,25 @@ This project is building **DummyCpp**, shorthand **Dpp**: a small C++ to C trans
   - full overload resolution,
   - perfect standard-library compatibility.
 
+## Testing
+
+- Prefer regression tests in `tests/`.
+- The primary test is a diff between the c++ executable and the c executable printouts.
+- Use assertions for more exhaustive tests in place of printouts. 
+- Keep the first <10 tests small to ensure testabillity, in order of importance this is cout, arithmetic, and assertions.
+- After the basics are done the test files should be comprehensive. A test of <vector> should touch all aspects of the c++ standard.
+- Run test with `scripts/test_all.sh`
+- Multifile tests will go into `examples`.
+
 ## Working Rules
 
 - Keep the main README.md presentable, clean, and readable.
 - Keep notes local to where they are applicable.
-  - For concise notes for a subdirectory read/write to README.md.
-  - For code specific notes write concise comments.
-- Always use trash instead of `rm`.
+- When skipping complex functionality or writing suboptimal code write a TODO comment in the appropriate file. 
+- Always use `trash` instead of `rm`.
 - Keep larger project notes in `docs/`.
 - Put condensed open questions only in `docs/questions.md`.
 - When a decision is made, move it from questions into `docs/decisions.md`.
-- Prefer small examples in `examples/` and regression tests in `tests/`.
-- Do not block on theoretical completeness; build the narrowest compileable vertical slice first.
-- Whenever adding a supported C++ feature, add:
-  - one input example,
-  - concise expected generated C shape notes without large snippets,
-  - full verification by compiling generated C, and running it when feasible.
 
 ## Naming
 

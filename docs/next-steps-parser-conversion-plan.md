@@ -19,19 +19,20 @@ Do not widen a feature until `scripts/test_all.sh` is green.
 - Free functions, primitive locals, loops, and simple branches that are already valid C.
 - Struct/class fields and one-line methods lowered to `Type_method(self, ...)`.
 - Simple constructors lowered to `Type_init`.
-- Single public inheritance lowered as first-field base embedding, with base
-  constructor calls, base method calls, and base field access rewritten through
-  the embedded base member.
+- Single and multiple non-virtual inheritance lowered as embedded base fields,
+  with access modifiers ignored and base constructor calls, base method calls,
+  and base field access rewritten through embedded base members.
 - `std::vector<int>`, `std::vector<double>`, and vector of simple record/class values through `inject/c/dpp_vector.*`.
 - Runtime cleanup before vector-return paths in supported local-function shapes.
-- Unsupported diagnostics for unsupported headers, exceptions, multiple/private/protected/virtual inheritance, virtual methods, and user templates.
+- Unsupported diagnostics for unsupported headers, exceptions, virtual inheritance, virtual methods, and user templates.
 
 ## Current Test Layout
 
 - `001`-`011`: small focused feature tests.
 - `012_long_records_classes.cpp`: condensed record/class workflow coverage.
 - `013_long_vectors_runtime.cpp`: condensed vector/runtime workflow coverage.
-- `014_single_inheritance.cpp`: first inheritance coverage.
+- `015_single_inheritance.cpp`: first single-inheritance coverage.
+- `023_inheritance_access_modifiers.cpp`: multiple inheritance with ignored access modifiers.
 - `tests/unsupported/`: expected rejection cases.
 
 The newer tests should stay condensed. Prefer adding sections/functions to the long cases unless a new feature needs a small focused bootstrap test first.
@@ -52,7 +53,7 @@ The newer tests should stay condensed. Prefer adding sections/functions to the l
 
 ## Non-Goals For Now
 
-- Multiple or virtual inheritance.
+- Virtual inheritance.
 - Full access control.
 - Virtual dispatch/vtables.
 - Exceptions.

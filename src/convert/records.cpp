@@ -27,7 +27,7 @@ struct Constructor {
 
 struct Record {
   std::string name;
-  std::string base_name;
+  std::vector<std::string> base_names;
   bool was_class = false;
   std::vector<std::string> fields;
   std::vector<std::string> field_names;
@@ -108,19 +108,72 @@ const Record *find_record(const std::map<std::string, Record> &records, const st
   return &found->second;
 }
 
+std::string base_field_name(const Record &record, const std::string &base_name) {
+  if (record.base_names.size() == 1) {
+    return "base";
+  }
+  return "base_" + base_name;
+}
+
+bool find_base_path(const std::map<std::string, Record> &records, const Record &record,
+                    const std::string &target, std::string &path) {
+  for (const std::string &base_name : record.base_names) {
+    const std::string field = base_field_name(record, base_name);
+    if (base_name == target) {
+      path = field;
+      return true;
+    }
+
+    const Record *base = find_record(records, base_name);
+    if (base == nullptr) {
+      continue;
+    }
+    std::string nested_path;
+    if (find_base_path(records, *base, target, nested_path)) {
+      path = field + "." + nested_path;
+      return true;
+    }
+  }
+  return false;
+}
+
 std::string find_method_owner(const std::map<std::string, Record> &records,
                               const std::string &type, const std::string &method_name) {
   const Record *record = find_record(records, type);
-  while (record != nullptr) {
-    if (has_method(*record, method_name)) {
-      return record->name;
+  if (record == nullptr) {
+    return type;
+  }
+  if (has_method(*record, method_name)) {
+    return record->name;
+  }
+  for (const std::string &base_name : record->base_names) {
+    const Record *base = find_record(records, base_name);
+    if (base == nullptr) {
+      continue;
     }
-    if (record->base_name.empty()) {
-      break;
+    const std::string owner = find_method_owner(records, base_name, method_name);
+    if (owner != base_name || has_method(*base, method_name)) {
+      return owner;
     }
-    record = find_record(records, record->base_name);
   }
   return type;
+}
+
+void lower_inherited_field_refs(std::string &body, const Record &record,
+                                const std::map<std::string, Record> &records,
+                                const std::string &prefix) {
+  for (const std::string &base_name : record.base_names) {
+    const Record *base = find_record(records, base_name);
+    if (base == nullptr) {
+      continue;
+    }
+    const std::string base_prefix = prefix + base_field_name(record, base_name) + ".";
+    for (const std::string &field : base->field_names) {
+      body = std::regex_replace(body, std::regex("\\b" + field + "\\b"),
+                                "self->" + base_prefix + field);
+    }
+    lower_inherited_field_refs(body, *base, records, base_prefix);
+  }
 }
 
 std::string lower_field_refs(std::string body, const Record &record,
@@ -129,17 +182,7 @@ std::string lower_field_refs(std::string body, const Record &record,
   for (const std::string &field : record.field_names) {
     body = std::regex_replace(body, std::regex("\\b" + field + "\\b"), "self->" + field);
   }
-  const Record *base = find_record(records, record.base_name);
-  while (base != nullptr) {
-    for (const std::string &field : base->field_names) {
-      body = std::regex_replace(body, std::regex("\\b" + field + "\\b"),
-                                "self->base." + field);
-    }
-    if (base->base_name.empty()) {
-      break;
-    }
-    base = find_record(records, base->base_name);
-  }
+  lower_inherited_field_refs(body, record, records, "");
   body = replace_all(body, "self->self->", "self->");
   return body;
 }
@@ -178,11 +221,11 @@ bool parse_method_line(const std::string &line, Method &method) {
   return true;
 }
 
-Record parse_record_body(const std::string &kind, const std::string &name, const std::string &base_name,
-                         const std::string &body) {
+Record parse_record_body(const std::string &kind, const std::string &name,
+                         const std::vector<std::string> &base_names, const std::string &body) {
   Record record;
   record.name = name;
-  record.base_name = base_name;
+  record.base_names = base_names;
   record.was_class = kind == "class";
 
   for (const std::string &raw_line : split_lines(body)) {
@@ -215,8 +258,8 @@ Record parse_record_body(const std::string &kind, const std::string &name, const
 std::string emit_record(const Record &record, const std::map<std::string, Record> &records) {
   std::ostringstream out;
   out << "typedef struct " << record.name << " {\n";
-  if (!record.base_name.empty()) {
-    out << "  " << record.base_name << " base;\n";
+  for (const std::string &base_name : record.base_names) {
+    out << "  " << base_name << " " << base_field_name(record, base_name) << ";\n";
   }
   for (const std::string &field : record.fields) {
     out << "  " << field << "\n";
@@ -230,8 +273,10 @@ std::string emit_record(const Record &record, const std::map<std::string, Record
     }
     out << ") {\n";
     for (const auto &initializer : constructor.initializers) {
-      if (initializer.first == record.base_name) {
-        out << "  " << record.base_name << "_init(&self->base, " << initializer.second << ");\n";
+      if (std::find(record.base_names.begin(), record.base_names.end(), initializer.first) !=
+          record.base_names.end()) {
+        out << "  " << initializer.first << "_init(&self->"
+            << base_field_name(record, initializer.first) << ", " << initializer.second << ");\n";
       } else {
         out << "  self->" << initializer.first << " = " << initializer.second << ";\n";
       }
@@ -241,8 +286,8 @@ std::string emit_record(const Record &record, const std::map<std::string, Record
 
   out << "\nstatic inline void " << record.name << "_destroy(void *value) {\n"
       << "  " << record.name << " *self = (" << record.name << " *)value;\n";
-  if (!record.base_name.empty()) {
-    out << "  " << record.base_name << "_destroy(&self->base);\n";
+  for (const std::string &base_name : record.base_names) {
+    out << "  " << base_name << "_destroy(&self->" << base_field_name(record, base_name) << ");\n";
   }
   out << "  (void)self;\n"
       << "}\n";
@@ -276,17 +321,29 @@ std::size_t find_matching_brace(const std::string &source, std::size_t open_brac
   return std::string::npos;
 }
 
-std::string parse_base_name(const std::string &source, std::size_t name_end, std::size_t brace) {
+std::vector<std::string> parse_base_names(const std::string &source, std::size_t name_end,
+                                          std::size_t brace) {
   const std::string clause = trim(source.substr(name_end, brace - name_end));
   if (clause.empty() || clause[0] != ':') {
-    return "";
+    return {};
   }
-  static const std::regex base_re(R"(^:\s*(?:public\s+)?([A-Za-z_]\w*)\s*$)");
-  std::smatch match;
-  if (!std::regex_match(clause, match, base_re)) {
-    return "";
+  std::vector<std::string> base_names;
+  std::string rest = trim(clause.substr(1));
+  std::size_t cursor = 0;
+  while (cursor < rest.size()) {
+    std::size_t comma = rest.find(',', cursor);
+    std::string base_clause = trim(rest.substr(cursor, comma - cursor));
+    base_clause = std::regex_replace(base_clause, std::regex(R"(\b(public|private|protected)\b)"), "");
+    base_clause = trim(base_clause);
+    if (!base_clause.empty()) {
+      base_names.push_back(base_clause);
+    }
+    if (comma == std::string::npos) {
+      break;
+    }
+    cursor = comma + 1;
   }
-  return match[1].str();
+  return base_names;
 }
 
 std::string lower_record_declarations(const std::string &source,
@@ -335,9 +392,9 @@ std::string lower_record_declarations(const std::string &source,
       continue;
     }
 
-    const std::string base_name = parse_base_name(source, name_end, brace);
+    const std::vector<std::string> base_names = parse_base_names(source, name_end, brace);
     const Record record =
-        parse_record_body(kind, name, base_name, source.substr(brace + 1, close - brace - 1));
+        parse_record_body(kind, name, base_names, source.substr(brace + 1, close - brace - 1));
     records[record.name] = record;
     out << emit_record(record, records);
     changed = true;
@@ -369,19 +426,33 @@ std::string lower_base_field_access(std::string source,
   for (const auto &var_entry : vars) {
     const std::string &var = var_entry.first;
     const Record *record = find_record(records, var_entry.second);
-    if (record == nullptr || record->base_name.empty()) {
+    if (record == nullptr || record->base_names.empty()) {
       continue;
     }
-    const Record *base = find_record(records, record->base_name);
-    while (base != nullptr) {
+    std::vector<const Record *> stack;
+    for (const std::string &base_name : record->base_names) {
+      const Record *base = find_record(records, base_name);
+      if (base != nullptr) {
+        stack.push_back(base);
+      }
+    }
+    while (!stack.empty()) {
+      const Record *base = stack.back();
+      stack.pop_back();
+      std::string path;
+      if (!find_base_path(records, *record, base->name, path)) {
+        continue;
+      }
       for (const std::string &field : base->field_names) {
         source = std::regex_replace(source, std::regex("\\b" + var + "\\." + field + "\\b"),
-                                    var + ".base." + field);
+                                    var + "." + path + "." + field);
       }
-      if (base->base_name.empty()) {
-        break;
+      for (const std::string &base_name : base->base_names) {
+        const Record *next_base = find_record(records, base_name);
+        if (next_base != nullptr) {
+          stack.push_back(next_base);
+        }
       }
-      base = find_record(records, base->base_name);
     }
   }
   return source;
@@ -420,7 +491,10 @@ std::string lower_method_calls(const std::string &source, const std::map<std::st
       const std::string owner = find_method_owner(records, type, method_name);
       std::string self_arg = "&" + var;
       if (owner != type) {
-        self_arg = "&" + var + ".base";
+        std::string path;
+        if (find_base_path(records, *record, owner, path)) {
+          self_arg = "&" + var + "." + path;
+        }
       }
       rebuilt += owner + "_" + method_name + "(" + self_arg;
       if (!args.empty()) {

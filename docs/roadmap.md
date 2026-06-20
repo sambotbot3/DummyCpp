@@ -6,7 +6,7 @@
 - Parity harness in `scripts/test_all.sh`.
 - `cout` lowering.
 - Structs/classes, fields, methods, constructors.
-- Single public inheritance.
+- Single and multiple non-virtual inheritance with ignored access modifiers.
 - `std::vector` runtime and generated-C runtime linking.
 - Condensed long workflow tests.
 

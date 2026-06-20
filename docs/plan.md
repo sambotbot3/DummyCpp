@@ -24,8 +24,10 @@ The project is intentionally not trying to be a full C++ compiler yet. It should
 - One-line methods lowered to explicit `self` functions.
 - Constructors lowered to `Type_init`.
 - Aggregate initialization for simple records.
-- Single public inheritance as embedded base field.
+- Single and multiple non-virtual inheritance as embedded base fields, with access modifiers ignored.
 - `std::vector` runtime for `int`, `double`, and simple record/class values.
+- Narrow `<algorithm>` support for selected vector-range algorithms and scalar
+  macros; unsupported portions are tracked in `docs/unsupported.md`.
 - Runtime linking in `scripts/test_all.sh`.
 - Expected-failure tests for unsupported features.
 

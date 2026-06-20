@@ -11,7 +11,8 @@ void add_error(std::vector<Diagnostic> &diagnostics, const std::string &message)
 
 bool is_supported_include(const std::string &include) {
   return include == "#include <algorithm>" || include == "#include <iostream>" ||
-         include == "#include <vector>" ||
+         include == "#include <vector>" || include == "#include <cassert>" ||
+         include == "#include <assert.h>" ||
          include == "#include <memory>" || include == "#include <map>" ||
          include == "#include <unordered_map>";
 }
@@ -57,14 +58,8 @@ std::vector<Diagnostic> check_bootstrap_syntax(const ParsedSource &source) {
   for (std::sregex_iterator it(source.text.begin(), source.text.end(), inheritance_re), end;
        it != end; ++it) {
     const std::string clause = (*it)[2].str();
-    if (clause.find(',') != std::string::npos) {
-      add_error(diagnostics, "multiple inheritance is not supported yet");
-    }
     if (std::regex_search(clause, std::regex(R"(\bvirtual\b)"))) {
       add_error(diagnostics, "virtual inheritance is not supported yet");
-    }
-    if (std::regex_search(clause, std::regex(R"(\b(private|protected)\b)"))) {
-      add_error(diagnostics, "private/protected inheritance is not supported yet");
     }
   }
 
