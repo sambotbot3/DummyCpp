@@ -2,6 +2,7 @@ add_library(dpp_convert
   algorithm.cpp
   assertions.cpp
   basic.cpp
+  cleanup.cpp
   iostream.cpp
   map.cpp
   memory.cpp

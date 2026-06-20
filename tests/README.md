@@ -9,7 +9,8 @@ The primary test oracle is behavioral parity:
 5. Run the generated-C binary and capture stdout + exit status.
 6. Diff original C++ behavior against generated-C behavior.
 
-Run all tests with `scripts/test_all.sh`.
+Run all tests with `scripts/test_all.sh`. The script also builds and runs the
+CMake unit tests registered through CTest.
 
 Each supported test case lives in `tests/cases/*.cpp`. The numeric prefixes keep the
 smallest required features first: `cout`/`printf`, arithmetic, assertions, then
@@ -18,3 +19,6 @@ and combine helpers, records/classes, vectors, loops, and multiple return paths.
 
 Unsupported-feature fixtures live in `tests/unsupported/*.cpp`. Those pass when `dpp`
 rejects them with a syntax, preprocess, or template-instantiation support diagnostic.
+
+Focused C++ unit tests live beside the harness under `tests/*.cpp`; use these for
+parser and diagnostic behavior that does not need a full transpile/compile/run cycle.

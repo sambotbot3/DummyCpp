@@ -1,14 +1,20 @@
 #include "dpp/convert/string.h"
+#include "cleanup.h"
 #include "dpp/string_utils.h"
 
+#include <algorithm>
 #include <map>
 #include <regex>
-#include <sstream>
 #include <string>
 #include <vector>
 
 namespace dpp::convert {
 namespace {
+
+struct ScopedString {
+  std::string name;
+  std::size_t depth = 0;
+};
 
 std::string lower_string_exprs(std::string line, const std::map<std::string, bool> &strings) {
   for (const auto &entry : strings) {
@@ -34,33 +40,57 @@ std::string lower_cstr_expr(const std::string &expr, const std::map<std::string,
   return lower_string_exprs(stripped, strings);
 }
 
-std::string destroy_lines(const std::string &indent, const std::map<std::string, bool> &strings) {
-  std::ostringstream out;
-  for (const auto &entry : strings) {
-    out << indent << "dpp_string_destroy(&" << entry.first << ");\n";
+std::map<std::string, bool> live_strings(const std::vector<ScopedString> &strings) {
+  std::map<std::string, bool> live;
+  for (const ScopedString &string_var : strings) {
+    live[string_var.name] = true;
   }
-  return out.str();
+  return live;
+}
+
+std::vector<std::string> destroy_lines(const std::string &indent,
+                                       const std::vector<ScopedString> &strings) {
+  std::vector<std::string> lines;
+  for (auto it = strings.rbegin(); it != strings.rend(); ++it) {
+    lines.push_back(indent + "dpp_string_destroy(&" + it->name + ");");
+  }
+  return lines;
+}
+
+std::vector<std::string> close_scope_lines(const std::string &indent,
+                                           std::vector<ScopedString> &strings,
+                                           std::size_t remaining_depth) {
+  std::vector<ScopedString> closing;
+  for (const ScopedString &string_var : strings) {
+    if (string_var.depth > remaining_depth) {
+      closing.push_back(string_var);
+    }
+  }
+
+  strings.erase(std::remove_if(strings.begin(), strings.end(),
+                               [remaining_depth](const ScopedString &string_var) {
+                                 return string_var.depth > remaining_depth;
+                               }),
+                strings.end());
+  return destroy_lines(indent, closing);
 }
 
 } // namespace
 
 StringResult lower_strings(const std::string &source) {
   StringResult result;
-  std::map<std::string, bool> strings;
+  std::vector<ScopedString> strings;
   std::vector<std::string> out;
   std::size_t brace_depth = 0;
 
   auto update_scope = [&](const std::string &line) {
-    const std::size_t before = brace_depth;
     brace_depth += count_char(line, '{');
     const std::size_t closes = count_char(line, '}');
     brace_depth = closes > brace_depth ? 0 : brace_depth - closes;
-    if (before == 1 && brace_depth == 0) {
-      strings.clear();
-    }
   };
 
   for (const std::string &line : split_lines(source)) {
+    const std::size_t before_depth = brace_depth;
     const std::string stripped = trim(line);
     if (stripped == "#include <string>") {
       result.used_string = true;
@@ -75,7 +105,7 @@ StringResult lower_strings(const std::string &source) {
       result.used_string = true;
       const std::string indent = match[1].str();
       const std::string name = match[2].str();
-      strings[name] = true;
+      strings.push_back({name, before_depth});
       out.push_back(indent + "dpp_string " + name + ";");
       out.push_back(indent + "dpp_string_init(&" + name + ");");
       update_scope(line);
@@ -88,10 +118,11 @@ StringResult lower_strings(const std::string &source) {
       result.used_string = true;
       const std::string indent = match[1].str();
       const std::string name = match[2].str();
-      strings[name] = true;
+      strings.push_back({name, before_depth});
+      const std::map<std::string, bool> live = live_strings(strings);
       out.push_back(indent + "dpp_string " + name + ";");
       out.push_back(indent + "dpp_string_init_cstr(&" + name + ", " +
-                    lower_cstr_expr(match[3].str(), strings) + ");");
+                    lower_cstr_expr(match[3].str(), live) + ");");
       update_scope(line);
       continue;
     }
@@ -102,45 +133,46 @@ StringResult lower_strings(const std::string &source) {
       result.used_string = true;
       const std::string indent = match[1].str();
       const std::string name = match[2].str();
-      strings[name] = true;
+      strings.push_back({name, before_depth});
+      const std::map<std::string, bool> live = live_strings(strings);
       out.push_back(indent + "dpp_string " + name + ";");
       out.push_back(indent + "dpp_string_init_cstr(&" + name + ", " +
-                    lower_cstr_expr(match[3].str(), strings) + ");");
+                    lower_cstr_expr(match[3].str(), live) + ");");
       update_scope(line);
       continue;
     }
 
     std::string lowered = line;
-    for (const auto &entry : strings) {
+    const std::map<std::string, bool> live = live_strings(strings);
+    for (const auto &entry : live) {
       const std::string &name = entry.first;
       const std::regex assign_re("^(\\s*)" + name + R"(\s*=\s*(.+)\s*;\s*$)");
       if (std::regex_match(lowered, match, assign_re)) {
         lowered = match[1].str() + "dpp_string_assign_cstr(&" + name + ", " +
-                  lower_cstr_expr(match[2].str(), strings) + ");";
+                  lower_cstr_expr(match[2].str(), live) + ");";
       }
     }
 
-    lowered = lower_string_exprs(lowered, strings);
+    lowered = lower_string_exprs(lowered, live);
     const std::string lowered_stripped = trim(lowered);
     if (!strings.empty() && lowered_stripped.rfind("return ", 0) == 0) {
       const std::string indent = leading_indent(lowered);
-      std::string expr = lowered_stripped.substr(std::string("return ").size());
-      if (!expr.empty() && expr.back() == ';') {
-        expr.pop_back();
-      }
-      out.push_back(indent + "int dpp_string_return_value = " + trim(expr) + ";");
-      std::string destroys = destroy_lines(indent, strings);
-      destroys = destroys.empty() ? "" : destroys.substr(0, destroys.size() - 1);
-      if (!destroys.empty()) {
-        for (const std::string &destroy_line : split_lines(destroys)) {
-          out.push_back(destroy_line);
-        }
-      }
-      out.push_back(indent + "return dpp_string_return_value;");
+      const std::vector<std::string> return_lines = append_cleanup_before_return(
+          lowered, "dpp_string_return_value", destroy_lines(indent, strings));
+      out.insert(out.end(), return_lines.begin(), return_lines.end());
       update_scope(line);
       continue;
     }
 
+    const std::size_t opens = count_char(line, '{');
+    const std::size_t closes = count_char(line, '}');
+    if (!strings.empty() && closes > opens) {
+      const std::size_t remaining_depth =
+          closes > before_depth + opens ? std::size_t{0} : before_depth + opens - closes;
+      const std::vector<std::string> cleanup =
+          close_scope_lines(leading_indent(line), strings, remaining_depth);
+      out.insert(out.end(), cleanup.begin(), cleanup.end());
+    }
     out.push_back(lowered);
     update_scope(line);
   }

@@ -10,6 +10,7 @@ mkdir -p "${TEST_BUILD_DIR}"
 
 cmake -S "${ROOT_DIR}" -B "${BUILD_DIR}"
 cmake --build "${BUILD_DIR}"
+ctest --test-dir "${BUILD_DIR}" --output-on-failure
 
 run_capture() {
   local exe="$1"

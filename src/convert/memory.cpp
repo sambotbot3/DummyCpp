@@ -1,6 +1,8 @@
 #include "dpp/convert/memory.h"
+#include "cleanup.h"
 #include "dpp/string_utils.h"
 
+#include <algorithm>
 #include <map>
 #include <regex>
 #include <string>
@@ -12,6 +14,12 @@ namespace {
 struct SmartVar {
   std::string type;
   bool shared = false;
+};
+
+struct ScopedSmartVar {
+  std::string name;
+  SmartVar var;
+  std::size_t depth = 0;
 };
 
 bool is_primitive_type(const std::string &type) {
@@ -39,24 +47,43 @@ std::string cleanup_line(const std::string &indent, const std::string &name,
 }
 
 std::vector<std::string> cleanup_lines(const std::string &indent,
-                                       const std::map<std::string, SmartVar> &vars,
-                                       const std::vector<std::string> &order) {
+                                       const std::vector<ScopedSmartVar> &vars) {
   std::vector<std::string> lines;
-  for (auto it = order.rbegin(); it != order.rend(); ++it) {
-    const auto found = vars.find(*it);
-    if (found != vars.end()) {
-      lines.push_back(cleanup_line(indent, found->first, found->second));
-    }
+  for (auto it = vars.rbegin(); it != vars.rend(); ++it) {
+    lines.push_back(cleanup_line(indent, it->name, it->var));
   }
   return lines;
 }
 
-void remember_var(std::map<std::string, SmartVar> &vars, std::vector<std::string> &order,
-                  const std::string &name, const SmartVar &var) {
-  if (vars.find(name) == vars.end()) {
-    order.push_back(name);
+std::map<std::string, SmartVar> live_vars(const std::vector<ScopedSmartVar> &vars) {
+  std::map<std::string, SmartVar> live;
+  for (const ScopedSmartVar &var : vars) {
+    live[var.name] = var.var;
   }
-  vars[name] = var;
+  return live;
+}
+
+void remember_var(std::vector<ScopedSmartVar> &vars, const std::string &name, const SmartVar &var,
+                  std::size_t depth) {
+  vars.push_back({name, var, depth});
+}
+
+std::vector<std::string> close_scope_lines(const std::string &indent,
+                                           std::vector<ScopedSmartVar> &vars,
+                                           std::size_t remaining_depth) {
+  std::vector<ScopedSmartVar> closing;
+  for (const ScopedSmartVar &var : vars) {
+    if (var.depth > remaining_depth) {
+      closing.push_back(var);
+    }
+  }
+
+  vars.erase(std::remove_if(vars.begin(), vars.end(),
+                            [remaining_depth](const ScopedSmartVar &var) {
+                              return var.depth > remaining_depth;
+                            }),
+             vars.end());
+  return cleanup_lines(indent, closing);
 }
 
 std::string lower_smart_exprs(std::string line, const std::map<std::string, SmartVar> &vars) {
@@ -113,8 +140,7 @@ std::vector<std::string> lower_heap_init(const std::string &indent, const std::s
 
 MemoryResult lower_memory(const std::string &source) {
   MemoryResult result;
-  std::map<std::string, SmartVar> vars;
-  std::vector<std::string> order;
+  std::vector<ScopedSmartVar> vars;
   std::vector<std::string> out;
   std::size_t brace_depth = 0;
 
@@ -135,7 +161,7 @@ MemoryResult lower_memory(const std::string &source) {
       const std::string kind = match[2].str();
       const std::string type = match[3].str();
       const std::string name = match[4].str();
-      remember_var(vars, order, name, {type, kind == "shared"});
+      remember_var(vars, name, {type, kind == "shared"}, before_depth);
       for (const std::string &lowered : lower_heap_init(indent, kind, type, name, match[5].str())) {
         out.push_back(lowered);
       }
@@ -153,7 +179,7 @@ MemoryResult lower_memory(const std::string &source) {
       const std::string type = match[2].str();
       const std::string name = match[3].str();
       const std::string source_name = match[4].str();
-      remember_var(vars, order, name, {type, true});
+      remember_var(vars, name, {type, true}, before_depth);
       out.push_back(indent + "dpp_shared_ptr " + name + ";");
       out.push_back(indent + "dpp_shared_copy(&" + name + ", &" + source_name + ");");
       brace_depth += count_char(line, '{');
@@ -162,28 +188,23 @@ MemoryResult lower_memory(const std::string &source) {
       continue;
     }
 
-    std::string lowered = lower_smart_exprs(line, vars);
+    std::string lowered = lower_smart_exprs(line, live_vars(vars));
     const std::string lowered_stripped = trim(lowered);
     if (!vars.empty() && lowered_stripped.rfind("return ", 0) == 0) {
       const std::string indent = leading_indent(lowered);
-      std::string expr = lowered_stripped.substr(std::string("return ").size());
-      if (!expr.empty() && expr.back() == ';') {
-        expr.pop_back();
-      }
-      out.push_back(indent + "int dpp_memory_return_value = " + trim(expr) + ";");
-      for (const std::string &cleanup : cleanup_lines(indent, vars, order)) {
-        out.push_back(cleanup);
-      }
-      out.push_back(indent + "return dpp_memory_return_value;");
+      const std::vector<std::string> return_lines = append_cleanup_before_return(
+          lowered, "dpp_memory_return_value", cleanup_lines(indent, vars));
+      out.insert(out.end(), return_lines.begin(), return_lines.end());
       vars.clear();
-      order.clear();
     } else {
       const std::size_t opens = count_char(line, '{');
       const std::size_t closes = count_char(line, '}');
-      if (!vars.empty() && before_depth == 1 && closes > opens) {
-        for (const std::string &cleanup : cleanup_lines(leading_indent(line), vars, order)) {
-          out.push_back(cleanup);
-        }
+      if (!vars.empty() && closes > opens) {
+        const std::size_t remaining_depth =
+            closes > before_depth + opens ? std::size_t{0} : before_depth + opens - closes;
+        const std::vector<std::string> cleanup =
+            close_scope_lines(leading_indent(line), vars, remaining_depth);
+        out.insert(out.end(), cleanup.begin(), cleanup.end());
       }
       out.push_back(lowered);
     }
@@ -193,7 +214,6 @@ MemoryResult lower_memory(const std::string &source) {
     brace_depth = closes > brace_depth ? 0 : brace_depth - closes;
     if (before_depth == 1 && brace_depth == 0) {
       vars.clear();
-      order.clear();
     }
   }
 
