@@ -1,5 +1,7 @@
 #include "dpp/transpiler.h"
 
+#include "dpp/parser/preprocessor.h"
+
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -81,7 +83,9 @@ int main(int argc, char **argv) {
   try {
     const Options opts = parse_args(argc, argv);
     const std::string source = read_file(opts.input_path);
-    write_file(opts.output_path, dpp::transpile_bootstrap_subset(source));
+    const dpp::parser::PreprocessResult preprocessed =
+        dpp::parser::preprocess_translation_unit_file(opts.input_path, source);
+    write_file(opts.output_path, dpp::transpile_bootstrap_subset(preprocessed.source));
     return 0;
   } catch (const std::exception &err) {
     std::cerr << "dpp: error: " << err.what() << "\n\n";
@@ -89,4 +93,3 @@ int main(int argc, char **argv) {
     return 1;
   }
 }
-

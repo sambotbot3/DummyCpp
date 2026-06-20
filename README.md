@@ -17,6 +17,10 @@ Try the starter pipeline with `scripts/run_point_example.sh`. It builds the tool
 transpiles `examples/point.cpp`, compiles the generated C with the injected runtime,
 and expects the resulting program to exit with status `3`.
 
+Try the multifile parity pipeline with `scripts/run_multifile_supported_example.sh`.
+It transpiles each source in `examples/multifile_supported/`, links the generated C
+objects together, and diffs stdout plus exit status against the native C++ build.
+
 Run the full parity harness with `scripts/test_all.sh`.
 
 The harness compiles each original C++11 case, runs it, transpiles it to C,
@@ -43,6 +47,7 @@ This first slice is intentionally tiny and friendly-input only:
 - `using namespace std;` for `cout`, `endl`, and `vector<T>`.
 - `std::unique_ptr<T>` and `std::shared_ptr<T>` for local `new T(...)` ownership, simple `->`/`get()` access, and shared-pointer copies.
 - early unsupported-feature diagnostics for unsupported headers, exceptions, multiple/private/protected/virtual inheritance, virtual methods, and user-defined templates.
+- quoted local header expansion with `#pragma once` and simple include-guard caching.
 
 The project direction is Clang-based, but this initial bootstrap transpiler is a narrow implementation that lets us verify the first C++ -> C -> executable loop before adding the Clang AST frontend.
 

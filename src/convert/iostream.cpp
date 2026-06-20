@@ -27,6 +27,10 @@ bool is_string_literal(const std::string &value) {
 }
 
 bool is_size_expression(const std::string &value) {
+  if (value.find("dpp_vector_at(") != std::string::npos ||
+      value.find("dpp_vector_const_at(") != std::string::npos) {
+    return false;
+  }
   return value.find(".size()") != std::string::npos ||
          value.find("dpp_vector_size(") != std::string::npos ||
          value.find("dpp_map_size(") != std::string::npos ||

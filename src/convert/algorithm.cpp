@@ -44,6 +44,10 @@ std::string lower_algorithm_exprs(std::string line) {
   return line;
 }
 
+std::string sort_comparator_for_type(const std::string &type) {
+  return "dpp_algorithm_compare_" + type;
+}
+
 } // namespace
 
 AlgorithmResult lower_algorithms(const std::string &source) {
@@ -72,7 +76,8 @@ AlgorithmResult lower_algorithms(const std::string &source) {
     if (std::regex_match(line, match, sort_re) && vectors.count(match[2].str()) != 0) {
       result.used_algorithm = true;
       const std::string name = match[2].str();
-      out.push_back(match[1].str() + "DPP_SORT_VECTOR(&" + name + ", " + vectors[name] + ");");
+      out.push_back(match[1].str() + "DPP_SORT_VECTOR(&" + name + ", " + vectors[name] + ", " +
+                    sort_comparator_for_type(vectors[name]) + ");");
       continue;
     }
 

@@ -17,13 +17,25 @@ Current support is intentionally narrow:
   ordering callbacks.
 - Unsupported: non-vector iterators, raw pointer ranges, arrays, maps, and
   initializer-list algorithm inputs.
+- Unsupported: sorting record/class vectors until the converter can find or
+  generate a matching comparator function.
 - Unsupported: most of `<algorithm>`, including search, count, copy, transform,
   remove, partition, heap, merge, stable sort, and binary-search algorithms.
-- Limitation: `DPP_SORT_VECTOR` is currently insertion sort, so generated C is
-  visible and helper-free but does not match `std::sort` complexity.
+- Limitation: `DPP_SORT_VECTOR` lowers supported scalar vectors to C `qsort`,
+  which is explicit but not stable.
 - Limitation: macro lowerings can evaluate arguments more than once for
   `DPP_MIN` and `DPP_MAX`; avoid side-effecting arguments until these lowerings
   become expression-safe helpers.
 
 Regression coverage lives in `tests/cases/020_algorithm_sort.cpp` and
 `tests/cases/021_algorithm_more.cpp`.
+
+## Preprocessor
+
+- Supported: quoted local includes are expanded before syntax checking.
+- Supported: `#pragma once` and simple `#ifndef`/`#define` include guards avoid
+  duplicate guarded header injection.
+- Supported: angle includes for Dpp-supported C++ standard headers are preserved
+  for lowering passes rather than expanded.
+- Unsupported: macros, conditional compilation, full include search paths, and
+  system-header expansion.

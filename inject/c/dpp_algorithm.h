@@ -3,6 +3,7 @@
 #include "dpp_vector.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define DPP_MIN(left, right) ((left) < (right) ? (left) : (right))
@@ -16,19 +17,46 @@
     memcpy(&(right), dpp_swap_tmp, sizeof(left));                                                 \
   } while (0)
 
-#define DPP_SORT_VECTOR(vector_ptr, type)                                                        \
+static inline int dpp_algorithm_compare_char(const void *left, const void *right) {
+  const char left_value = *(const char *)left;
+  const char right_value = *(const char *)right;
+  return (left_value > right_value) - (left_value < right_value);
+}
+
+static inline int dpp_algorithm_compare_int(const void *left, const void *right) {
+  const int left_value = *(const int *)left;
+  const int right_value = *(const int *)right;
+  return (left_value > right_value) - (left_value < right_value);
+}
+
+static inline int dpp_algorithm_compare_long(const void *left, const void *right) {
+  const long left_value = *(const long *)left;
+  const long right_value = *(const long *)right;
+  return (left_value > right_value) - (left_value < right_value);
+}
+
+static inline int dpp_algorithm_compare_float(const void *left, const void *right) {
+  const float left_value = *(const float *)left;
+  const float right_value = *(const float *)right;
+  return (left_value > right_value) - (left_value < right_value);
+}
+
+static inline int dpp_algorithm_compare_double(const void *left, const void *right) {
+  const double left_value = *(const double *)left;
+  const double right_value = *(const double *)right;
+  return (left_value > right_value) - (left_value < right_value);
+}
+
+static inline int dpp_algorithm_compare_char_ptr(const void *left, const void *right) {
+  const char *left_value = *(const char *const *)left;
+  const char *right_value = *(const char *const *)right;
+  return strcmp(left_value, right_value);
+}
+
+#define DPP_SORT_VECTOR(vector_ptr, type, compare_fn)                                            \
   do {                                                                                           \
     dpp_vector *dpp_sort_vector = (vector_ptr);                                                   \
-    type *dpp_sort_data = (type *)dpp_sort_vector->data;                                         \
-    for (size_t dpp_sort_i = 1; dpp_sort_i < dpp_sort_vector->size; ++dpp_sort_i) {              \
-      type dpp_sort_value = dpp_sort_data[dpp_sort_i];                                           \
-      size_t dpp_sort_j = dpp_sort_i;                                                            \
-      while (dpp_sort_j > 0 && dpp_sort_value < dpp_sort_data[dpp_sort_j - 1]) {                 \
-        dpp_sort_data[dpp_sort_j] = dpp_sort_data[dpp_sort_j - 1];                               \
-        --dpp_sort_j;                                                                            \
-      }                                                                                          \
-      dpp_sort_data[dpp_sort_j] = dpp_sort_value;                                                \
-    }                                                                                            \
+    qsort(dpp_sort_vector->data, dpp_sort_vector->size, sizeof(type), (compare_fn));             \
   } while (0)
 
 #define DPP_REVERSE_VECTOR(vector_ptr, type)                                                     \

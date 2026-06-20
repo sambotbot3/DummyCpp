@@ -1,6 +1,7 @@
 add_library(dpp_parser
   lexer.cpp
   parser.cpp
+  preprocessor.cpp
   syntax_checker.cpp
 )
 

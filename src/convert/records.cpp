@@ -20,6 +20,13 @@ struct Method {
   bool is_const = false;
 };
 
+struct VectorParam {
+  std::size_t index = 0;
+  std::string elem_type;
+  std::string name;
+  bool is_const = false;
+};
+
 struct Constructor {
   std::string params;
   std::vector<std::pair<std::string, std::string>> initializers;
@@ -91,6 +98,96 @@ std::string replace_all(std::string value, const std::string &from, const std::s
   return value;
 }
 
+std::vector<std::string> split_commas(const std::string &value) {
+  std::vector<std::string> parts;
+  std::size_t cursor = 0;
+  int angle_depth = 0;
+  int paren_depth = 0;
+  for (std::size_t i = 0; i < value.size(); ++i) {
+    if (value[i] == '<') {
+      ++angle_depth;
+    } else if (value[i] == '>' && angle_depth > 0) {
+      --angle_depth;
+    } else if (value[i] == '(') {
+      ++paren_depth;
+    } else if (value[i] == ')' && paren_depth > 0) {
+      --paren_depth;
+    } else if (value[i] == ',' && angle_depth == 0 && paren_depth == 0) {
+      parts.push_back(trim(value.substr(cursor, i - cursor)));
+      cursor = i + 1;
+    }
+  }
+  const std::string tail = trim(value.substr(cursor));
+  if (!tail.empty()) {
+    parts.push_back(tail);
+  }
+  return parts;
+}
+
+std::vector<VectorParam> collect_vector_ref_params(const std::string &params) {
+  std::vector<VectorParam> vector_params;
+  const std::vector<std::string> parts = split_commas(params);
+  static const std::regex vector_ref_re(
+      R"(^(const\s+)?(?:std::)?vector\s*<\s*([A-Za-z_]\w*)\s*>\s*&\s*([A-Za-z_]\w*)$)");
+  for (std::size_t i = 0; i < parts.size(); ++i) {
+    std::smatch match;
+    if (std::regex_match(parts[i], match, vector_ref_re)) {
+      vector_params.push_back({i, trim(match[2].str()), trim(match[3].str()), match[1].matched});
+    }
+  }
+  return vector_params;
+}
+
+std::string lower_vector_push_value(const std::string &expr, const std::string &c_type) {
+  const std::string trimmed = trim(expr);
+  const std::string aggregate_prefix = c_type + "{";
+  if (trimmed.rfind(aggregate_prefix, 0) == 0 && !trimmed.empty() && trimmed.back() == '}') {
+    return "(" + c_type + ")" + trimmed.substr(c_type.size());
+  }
+  if (std::regex_match(trimmed, std::regex(R"([A-Za-z_]\w*)"))) {
+    return trimmed;
+  }
+  return "(" + c_type + "){" + trimmed + "}";
+}
+
+std::string lower_vector_ref_params(const std::string &params) {
+  std::vector<std::string> parts = split_commas(params);
+  const std::vector<VectorParam> vector_params = collect_vector_ref_params(params);
+  for (const VectorParam &param : vector_params) {
+    parts[param.index] = std::string(param.is_const ? "const " : "") + "dpp_vector *" + param.name;
+  }
+
+  std::ostringstream out;
+  for (std::size_t i = 0; i < parts.size(); ++i) {
+    if (i > 0) {
+      out << ", ";
+    }
+    out << parts[i];
+  }
+  return out.str();
+}
+
+std::string lower_vector_ref_body(std::string body, const std::string &params) {
+  for (const VectorParam &param : collect_vector_ref_params(params)) {
+    const std::string c_type = param.elem_type;
+    const std::string at_fn = param.is_const ? "dpp_vector_const_at" : "dpp_vector_at";
+    if (!param.is_const) {
+      body = std::regex_replace(
+          body,
+          std::regex("\\b" + param.name + R"(\.push_back\s*\(([^()]*)\))"),
+          "dpp_vector_push_back(" + param.name + ", &" +
+              lower_vector_push_value("$1", c_type) + ")");
+    }
+    body = std::regex_replace(body, std::regex("\\b" + param.name + R"(\.size\s*\(\s*\))"),
+                              "dpp_vector_size(" + param.name + ")");
+    body = std::regex_replace(
+        body, std::regex("\\b" + param.name + R"(\s*\[\s*([^\]]+)\s*\])"),
+        "(*(" + std::string(param.is_const ? "const " : "") + c_type + " *)" + at_fn + "(" +
+            param.name + ", $1))");
+  }
+  return body;
+}
+
 bool has_method(const Record &record, const std::string &method_name) {
   for (const Method &method : record.methods) {
     if (method.name == method_name) {
@@ -106,6 +203,25 @@ const Record *find_record(const std::map<std::string, Record> &records, const st
     return nullptr;
   }
   return &found->second;
+}
+
+const Method *find_method(const std::map<std::string, Record> &records,
+                          const std::string &type, const std::string &method_name) {
+  const Record *record = find_record(records, type);
+  if (record == nullptr) {
+    return nullptr;
+  }
+  for (const Method &method : record->methods) {
+    if (method.name == method_name) {
+      return &method;
+    }
+  }
+  for (const std::string &base_name : record->base_names) {
+    if (const Method *method = find_method(records, base_name, method_name)) {
+      return method;
+    }
+  }
+  return nullptr;
 }
 
 std::string base_field_name(const Record &record, const std::string &base_name) {
@@ -296,10 +412,12 @@ std::string emit_record(const Record &record, const std::map<std::string, Record
     out << "\nstatic inline " << method.return_type << " " << record.name << "_" << method.name
         << "(" << (method.is_const ? "const " : "") << record.name << " *self";
     if (!method.params.empty()) {
-      out << ", " << method.params;
+      out << ", " << lower_vector_ref_params(method.params);
     }
+    std::string body = lower_field_refs(method.body, record, records);
+    body = lower_vector_ref_body(body, method.params);
     out << ") {\n"
-        << "  " << lower_field_refs(method.body, record, records) << "\n"
+        << "  " << body << "\n"
         << "}\n";
   }
 
@@ -489,6 +607,15 @@ std::string lower_method_calls(const std::string &source, const std::map<std::st
       const std::string method_name = match[1].str();
       const std::string args = trim(match[2].str());
       const std::string owner = find_method_owner(records, type, method_name);
+      const Method *method = find_method(records, owner, method_name);
+      std::vector<std::string> call_args = split_commas(args);
+      if (method != nullptr) {
+        for (const VectorParam &param : collect_vector_ref_params(method->params)) {
+          if (param.index < call_args.size() && call_args[param.index].rfind("&", 0) != 0) {
+            call_args[param.index] = "&" + call_args[param.index];
+          }
+        }
+      }
       std::string self_arg = "&" + var;
       if (owner != type) {
         std::string path;
@@ -497,8 +624,14 @@ std::string lower_method_calls(const std::string &source, const std::map<std::st
         }
       }
       rebuilt += owner + "_" + method_name + "(" + self_arg;
-      if (!args.empty()) {
-        rebuilt += ", " + args;
+      if (!call_args.empty()) {
+        rebuilt += ", ";
+        for (std::size_t i = 0; i < call_args.size(); ++i) {
+          if (i > 0) {
+            rebuilt += ", ";
+          }
+          rebuilt += call_args[i];
+        }
       }
       rebuilt += ")";
       cursor = static_cast<std::size_t>(match.position() + match.length());

@@ -12,6 +12,7 @@ This project is building **DummyCpp**, shorthand **Dpp**: a C++ to C transpiler 
 - Objects/classes should lower to C structs with no hidden object overhead beyond fields and explicit helper functions.
 - Favor zero-cost or explicit-cost translations. If a feature needs runtime support, make that support visible and documented.
 - Place c++ std lib replacements in `inject/`. Sometimes for things like templates this may need to be macros.
+- dpp client tool will use similar flags to gcc.
 
 ## Transpiler
 
