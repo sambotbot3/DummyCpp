@@ -19,6 +19,12 @@ struct Method {
   std::string params;
   std::string body;
   bool is_const = false;
+  bool is_static = false;
+};
+
+struct StaticField {
+  std::string type;
+  std::string name;
 };
 
 struct VectorParam {
@@ -31,6 +37,7 @@ struct VectorParam {
 struct Constructor {
   std::string params;
   std::vector<std::pair<std::string, std::string>> initializers;
+  std::string body; // statements after the initializer list
 };
 
 struct Record {
@@ -40,6 +47,7 @@ struct Record {
   std::vector<std::string> fields;
   std::vector<std::string> field_names;
   std::map<std::string, std::string> field_defaults; // field_name → default value expression
+  std::vector<StaticField> static_fields;
   std::vector<Method> methods;
   std::vector<Constructor> constructors;
 };
@@ -281,28 +289,42 @@ std::string lower_field_refs(std::string body, const Record &record,
   for (const std::string &field : record.field_names) {
     body = std::regex_replace(body, std::regex("\\b" + field + "\\b"), "self->" + field);
   }
+  // Static fields: rewrite bare name to ClassName_name (no self pointer).
+  for (const StaticField &sf : record.static_fields) {
+    body = std::regex_replace(body, std::regex("\\b" + sf.name + "\\b"),
+                              record.name + "_" + sf.name);
+  }
   lower_inherited_field_refs(body, record, records, "");
   body = replace_all(body, "self->self->", "self->");
   return body;
 }
 
-bool parse_constructor_line(const std::string &line, const std::string &record_name,
-                            Constructor &constructor) {
-  const std::regex ctor_re("^" + record_name + R"(\s*\(([^)]*)\)\s*:\s*(.*?)\s*\{\s*\}\s*;?$)");
-  std::smatch match;
-  if (!std::regex_match(line, match, ctor_re)) {
-    return false;
-  }
-  constructor.params = trim(match[1].str());
-  const std::string init_list = match[2].str();
+static void parse_initializer_list(const std::string &init_list, Constructor &constructor) {
   const std::regex init_re(R"(([A-Za-z_]\w*)\s*\(([^)]*)\))");
   for (std::sregex_iterator it(init_list.begin(), init_list.end(), init_re), end; it != end; ++it) {
     constructor.initializers.push_back({trim((*it)[1].str()), trim((*it)[2].str())});
   }
-  if (constructor.initializers.empty()) {
-    return false;
+}
+
+bool parse_constructor_line(const std::string &line, const std::string &record_name,
+                            Constructor &constructor) {
+  std::smatch match;
+  // Constructor with initializer list and any body.
+  const std::regex ctor_init_re("^" + record_name + R"(\s*\(([^)]*)\)\s*:\s*(.*?)\s*\{(.*)\}\s*;?$)");
+  if (std::regex_match(line, match, ctor_init_re)) {
+    constructor.params = trim(match[1].str());
+    parse_initializer_list(match[2].str(), constructor);
+    constructor.body = trim(match[3].str());
+    return true;
   }
-  return true;
+  // Constructor with no initializer list but with body (possibly empty).
+  const std::regex ctor_body_re("^" + record_name + R"(\s*\(([^)]*)\)\s*\{(.*)\}\s*;?$)");
+  if (std::regex_match(line, match, ctor_body_re)) {
+    constructor.params = trim(match[1].str());
+    constructor.body = trim(match[2].str());
+    return true;
+  }
+  return false;
 }
 
 bool parse_method_line(const std::string &line, Method &method) {
@@ -313,6 +335,13 @@ bool parse_method_line(const std::string &line, Method &method) {
     return false;
   }
   method.return_type = trim(match[1].str());
+  // Strip leading 'static' keyword; mark method as static.
+  if (method.return_type.rfind("static", 0) == 0 &&
+      (method.return_type.size() == 6 ||
+       std::isspace(static_cast<unsigned char>(method.return_type[6])))) {
+    method.is_static = true;
+    method.return_type = trim(method.return_type.substr(6));
+  }
   method.name = trim(match[2].str());
   method.params = trim(match[3].str());
   method.is_const = match[4].matched;
@@ -346,12 +375,26 @@ Record parse_record_body(const std::string &kind, const std::string &name,
     }
 
     if (line.find('(') == std::string::npos && !line.empty() && line.back() == ';') {
-      auto [stripped_decl, default_val] = split_field_default(line);
-      const std::string fname = field_name_from_decl(stripped_decl);
-      record.fields.push_back(stripped_decl);
-      record.field_names.push_back(fname);
-      if (!default_val.empty()) {
-        record.field_defaults[fname] = default_val;
+      // Static field declarations: store name+type but don't add to the struct body.
+      const std::string stripped_line = trim(line);
+      if (stripped_line.rfind("static ", 0) == 0) {
+        const std::string without_static = trim(stripped_line.substr(7));
+        auto [decl, dval] = split_field_default(without_static);
+        const std::string fname = field_name_from_decl(decl);
+        std::string decl_no_semi = trim(decl);
+        if (!decl_no_semi.empty() && decl_no_semi.back() == ';') decl_no_semi.pop_back();
+        const auto sp = decl_no_semi.rfind(' ');
+        const std::string ftype = sp != std::string::npos ? trim(decl_no_semi.substr(0, sp)) : "";
+        record.static_fields.push_back({ftype, fname});
+        (void)dval;
+      } else {
+        auto [stripped_decl, default_val] = split_field_default(line);
+        const std::string fname = field_name_from_decl(stripped_decl);
+        record.fields.push_back(stripped_decl);
+        record.field_names.push_back(fname);
+        if (!default_val.empty()) {
+          record.field_defaults[fname] = default_val;
+        }
       }
     }
   }
@@ -361,6 +404,11 @@ Record parse_record_body(const std::string &kind, const std::string &name,
 
 std::string emit_record(const Record &record, const std::map<std::string, Record> &records) {
   std::ostringstream out;
+  // Emit tentative definitions for static fields before the struct so that
+  // the struct's methods can reference them without forward-declaration errors.
+  for (const StaticField &sf : record.static_fields) {
+    out << "static " << sf.type << " " << record.name << "_" << sf.name << ";\n";
+  }
   out << "typedef struct " << record.name << " {\n";
   for (const std::string &base_name : record.base_names) {
     out << "  " << base_name << " " << base_field_name(record, base_name) << ";\n";
@@ -415,6 +463,11 @@ std::string emit_record(const Record &record, const std::map<std::string, Record
         out << "  self->" << fname << " = " << it->second << ";\n";
       }
     }
+    // Emit the constructor body (e.g., Widget() { ++count; }).
+    if (!constructor.body.empty()) {
+      std::string body = lower_field_refs(constructor.body, record, records);
+      out << "  " << body << "\n";
+    }
     out << "}\n";
   }
 
@@ -446,28 +499,47 @@ std::string emit_record(const Record &record, const std::map<std::string, Record
       << "}\n";
 
   for (const Method &method : record.methods) {
-    out << "\nstatic inline " << method.return_type << " " << record.name << "_" << method.name
-        << "(" << (method.is_const ? "const " : "") << record.name << " *self";
-    if (!method.params.empty()) {
-      out << ", " << lower_vector_ref_params(method.params);
+    if (method.is_static) {
+      // Static methods: no self parameter; rewrite bare static field names
+      out << "\nstatic inline " << method.return_type << " " << record.name << "_" << method.name
+          << "(";
+      if (!method.params.empty()) {
+        out << lower_vector_ref_params(method.params);
+      } else {
+        out << "void";
+      }
+      std::string body = method.body;
+      // In a static method, bare field names refer to static members.
+      for (const StaticField &sf : record.static_fields) {
+        body = std::regex_replace(body, std::regex("\\b" + sf.name + "\\b"),
+                                  record.name + "_" + sf.name);
+      }
+      body = lower_vector_ref_body(body, method.params);
+      out << ") {\n  " << body << "\n}\n";
+    } else {
+      out << "\nstatic inline " << method.return_type << " " << record.name << "_" << method.name
+          << "(" << (method.is_const ? "const " : "") << record.name << " *self";
+      if (!method.params.empty()) {
+        out << ", " << lower_vector_ref_params(method.params);
+      }
+      std::string body = lower_field_refs(method.body, record, records);
+      // Lower dpp_string field method calls that lower_field_refs has made `self->field` form.
+      for (const std::string &sfname : string_field_names) {
+        body = std::regex_replace(
+            body, std::regex(R"(\bself->)" + sfname + R"(\.c_str\s*\(\s*\))"),
+            "dpp_string_c_str(&self->" + sfname + ")");
+        body = std::regex_replace(
+            body, std::regex(R"(\bself->)" + sfname + R"(\.size\s*\(\s*\))"),
+            "dpp_string_size(&self->" + sfname + ")");
+        body = std::regex_replace(
+            body, std::regex(R"(\bself->)" + sfname + R"(\.empty\s*\(\s*\))"),
+            "(dpp_string_size(&self->" + sfname + ") == 0)");
+      }
+      body = lower_vector_ref_body(body, method.params);
+      out << ") {\n"
+          << "  " << body << "\n"
+          << "}\n";
     }
-    std::string body = lower_field_refs(method.body, record, records);
-    // Lower dpp_string field method calls that lower_field_refs has made `self->field` form.
-    for (const std::string &sfname : string_field_names) {
-      body = std::regex_replace(
-          body, std::regex(R"(\bself->)" + sfname + R"(\.c_str\s*\(\s*\))"),
-          "dpp_string_c_str(&self->" + sfname + ")");
-      body = std::regex_replace(
-          body, std::regex(R"(\bself->)" + sfname + R"(\.size\s*\(\s*\))"),
-          "dpp_string_size(&self->" + sfname + ")");
-      body = std::regex_replace(
-          body, std::regex(R"(\bself->)" + sfname + R"(\.empty\s*\(\s*\))"),
-          "(dpp_string_size(&self->" + sfname + ") == 0)");
-    }
-    body = lower_vector_ref_body(body, method.params);
-    out << ") {\n"
-        << "  " << body << "\n"
-        << "}\n";
   }
 
   return out.str();
@@ -733,6 +805,40 @@ std::string lower_method_calls(const std::string &source, const std::map<std::st
 
 } // namespace
 
+// Rewrite ClassName::staticMember accesses and out-of-class static definitions.
+std::string lower_static_member_accesses(const std::string &source,
+                                         const std::map<std::string, Record> &records) {
+  std::string out = source;
+  for (const auto &entry : records) {
+    const std::string &type = entry.first;
+    const Record &record = entry.second;
+
+    // Rewrite out-of-class static field definitions: "TYPE ClassName::field = value;"
+    // These appear at file scope (no leading whitespace on the line).
+    for (const StaticField &sf : record.static_fields) {
+      // "int Widget::count = 0;" → "static int Widget::count = 0;"
+      out = std::regex_replace(
+          out,
+          std::regex("(^|\\n)(" + sf.type + R"(\s+)" + type + "::" + sf.name +
+                     R"((?:\s*=[^;]+)?\s*;))"),
+          "$1static $2");
+    }
+
+    // Rewrite ClassName::member accesses (static fields and static methods).
+    for (const StaticField &sf : record.static_fields) {
+      out = std::regex_replace(out, std::regex("\\b" + type + "::" + sf.name + "\\b"),
+                               type + "_" + sf.name);
+    }
+    for (const Method &method : record.methods) {
+      if (method.is_static) {
+        out = std::regex_replace(out, std::regex("\\b" + type + "::" + method.name + "\\b"),
+                                 type + "_" + method.name);
+      }
+    }
+  }
+  return out;
+}
+
 // Emit _init calls for default-constructible records declared as "Type name;".
 std::string lower_default_ctor_locals(const std::string &source,
                                       const std::map<std::string, Record> &records) {
@@ -761,6 +867,7 @@ RecordsResult lower_records(const std::string &source) {
   RecordsResult result;
   std::map<std::string, Record> records;
   result.source = lower_record_declarations(source, records, result.lowered_records);
+  result.source = lower_static_member_accesses(result.source, records);
   result.source = lower_constructor_locals(result.source, records);
   result.source = lower_default_ctor_locals(result.source, records);
   result.source = lower_aggregate_locals(result.source, records);
