@@ -10,12 +10,23 @@ void add_error(std::vector<Diagnostic> &diagnostics, const std::string &message)
 }
 
 bool is_supported_include(const std::string &include) {
-  return include == "#include <algorithm>" || include == "#include <iostream>" ||
-         include == "#include <vector>" || include == "#include <cassert>" ||
-         include == "#include <assert.h>" ||
-         include == "#include <string>" ||
-         include == "#include <memory>" || include == "#include <map>" ||
-         include == "#include <unordered_map>";
+  static const char *const allowed[] = {
+      "#include <algorithm>",   "#include <iostream>",
+      "#include <vector>",      "#include <cassert>",
+      "#include <assert.h>",    "#include <string>",
+      "#include <memory>",      "#include <map>",
+      "#include <unordered_map>",
+      // C compat headers — stripped by lower_cpp_surface_types; no C equivalent needed
+      "#include <cstddef>",     "#include <cstdlib>",
+      "#include <cstring>",     "#include <cmath>",
+      "#include <climits>",     "#include <utility>",
+      "#include <type_traits>", "#include <functional>",
+      "#include <numeric>",     "#include <stdexcept>",
+      nullptr};
+  for (int i = 0; allowed[i]; ++i) {
+    if (include == allowed[i]) return true;
+  }
+  return false;
 }
 
 } // namespace

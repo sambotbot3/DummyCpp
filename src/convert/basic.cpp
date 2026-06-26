@@ -1,4 +1,5 @@
 #include "dpp/convert/basic.h"
+#include "dpp/string_utils.h"
 
 #include <cctype>
 #include <regex>
@@ -98,7 +99,28 @@ std::string lower_aggregate_initializers(const std::string &source) {
 }
 
 std::string lower_cpp_surface_types(const std::string &source) {
-  std::string out = source;
+  // Strip C++ compat includes that have no direct C counterpart needed.
+  static const char *const compat_includes[] = {
+      "#include <cstddef>",  "#include <cstdlib>",   "#include <cstring>",
+      "#include <cmath>",    "#include <climits>",   "#include <utility>",
+      "#include <type_traits>", "#include <functional>", "#include <numeric>",
+      "#include <stdexcept>", nullptr};
+
+  std::string out;
+  {
+    std::istringstream in(source);
+    std::ostringstream oss;
+    std::string ln;
+    while (std::getline(in, ln)) {
+      const std::string s = trim(ln);
+      bool skip = false;
+      for (int i = 0; compat_includes[i]; ++i) {
+        if (s == compat_includes[i]) { skip = true; break; }
+      }
+      if (!skip) oss << ln << '\n';
+    }
+    out = oss.str();
+  }
   out = std::regex_replace(
       out,
       std::regex(
@@ -114,6 +136,9 @@ std::string lower_cpp_surface_types(const std::string &source) {
       "dpp_map");
   out = std::regex_replace(
       out, std::regex(R"(\b(?:std::)?vector\s*<\s*([A-Za-z_]\w*)\s*>)"), "dpp_vector");
+  out = std::regex_replace(out, std::regex(R"(\bnullptr\b)"), "NULL");
+  out = std::regex_replace(out, std::regex(R"(\bstd::string::npos\b)"), "((size_t)-1)");
+  out = std::regex_replace(out, std::regex(R"(\bconstexpr\s+)"), "const ");
   out = std::regex_replace(out, std::regex(R"(\bstd::string\b)"), "dpp_string");
   out = std::regex_replace(
       out, std::regex(R"(\bconst\s+dpp_string\s*&\s*([A-Za-z_]\w*))"), "const char *$1");
