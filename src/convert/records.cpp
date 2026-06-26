@@ -43,6 +43,8 @@ struct Record {
   std::vector<Constructor> constructors;
 };
 
+bool is_string_field_decl(const std::string &field);
+
 bool starts_with_at(const std::string &source, std::size_t pos, const std::string &prefix) {
   return source.size() >= pos + prefix.size() && source.compare(pos, prefix.size(), prefix) == 0;
 }
@@ -337,17 +339,39 @@ std::string emit_record(const Record &record, const std::map<std::string, Record
   }
   out << "} " << record.name << ";\n";
 
+  // Build set of string field names for use in _init and _destroy.
+  std::vector<std::string> string_field_names;
+  for (std::size_t fi = 0; fi < record.fields.size(); ++fi) {
+    if (is_string_field_decl(record.fields[fi]) && fi < record.field_names.size()) {
+      string_field_names.push_back(record.field_names[fi]);
+    }
+  }
+
   for (const Constructor &constructor : record.constructors) {
     out << "\nstatic inline void " << record.name << "_init(" << record.name << " *self";
     if (!constructor.params.empty()) {
       out << ", " << constructor.params;
     }
     out << ") {\n";
+    // Default-init string fields not covered by the initializer list.
+    std::vector<std::string> covered;
+    for (const auto &initializer : constructor.initializers) {
+      covered.push_back(initializer.first);
+    }
+    for (const std::string &sfname : string_field_names) {
+      if (std::find(covered.begin(), covered.end(), sfname) == covered.end()) {
+        out << "  dpp_string_init(&self->" << sfname << ");\n";
+      }
+    }
     for (const auto &initializer : constructor.initializers) {
       if (std::find(record.base_names.begin(), record.base_names.end(), initializer.first) !=
           record.base_names.end()) {
         out << "  " << initializer.first << "_init(&self->"
             << base_field_name(record, initializer.first) << ", " << initializer.second << ");\n";
+      } else if (std::find(string_field_names.begin(), string_field_names.end(),
+                           initializer.first) != string_field_names.end()) {
+        out << "  dpp_string_init_cstr(&self->" << initializer.first << ", "
+            << initializer.second << ");\n";
       } else {
         out << "  self->" << initializer.first << " = " << initializer.second << ";\n";
       }
@@ -360,6 +384,9 @@ std::string emit_record(const Record &record, const std::map<std::string, Record
   for (const std::string &base_name : record.base_names) {
     out << "  " << base_name << "_destroy(&self->" << base_field_name(record, base_name) << ");\n";
   }
+  for (const std::string &sfname : string_field_names) {
+    out << "  dpp_string_destroy(&self->" << sfname << ");\n";
+  }
   out << "  (void)self;\n"
       << "}\n";
 
@@ -370,6 +397,18 @@ std::string emit_record(const Record &record, const std::map<std::string, Record
       out << ", " << lower_vector_ref_params(method.params);
     }
     std::string body = lower_field_refs(method.body, record, records);
+    // Lower dpp_string field method calls that lower_field_refs has made `self->field` form.
+    for (const std::string &sfname : string_field_names) {
+      body = std::regex_replace(
+          body, std::regex(R"(\bself->)" + sfname + R"(\.c_str\s*\(\s*\))"),
+          "dpp_string_c_str(&self->" + sfname + ")");
+      body = std::regex_replace(
+          body, std::regex(R"(\bself->)" + sfname + R"(\.size\s*\(\s*\))"),
+          "dpp_string_size(&self->" + sfname + ")");
+      body = std::regex_replace(
+          body, std::regex(R"(\bself->)" + sfname + R"(\.empty\s*\(\s*\))"),
+          "(dpp_string_size(&self->" + sfname + ") == 0)");
+    }
     body = lower_vector_ref_body(body, method.params);
     out << ") {\n"
         << "  " << body << "\n"

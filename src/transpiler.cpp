@@ -34,6 +34,7 @@ std::string transpile_bootstrap_subset(const std::string &source) {
   }
 
   std::string out = convert::lower_function_templates(parsed).source;
+  out = convert::lower_auto_types(out);
   out = convert::lower_records(out).source;
   out = convert::lower_free_functions(out).source;
   convert::VectorResult vector = convert::lower_vectors(out);

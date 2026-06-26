@@ -2,6 +2,8 @@
 #include "dpp/string_utils.h"
 
 #include <cctype>
+#include <map>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -107,15 +109,32 @@ std::vector<std::string> split_cout_chain(const std::string &chain) {
   return parts;
 }
 
-std::string lower_cout_line(const std::string &line, bool &used_stdio) {
+std::string format_spec_for_type(const std::string &ctype) {
+  if (ctype == "double" || ctype == "float") return "%g";
+  if (ctype == "char") return "%c";
+  if (ctype == "long") return "%ld";
+  if (ctype == "unsigned int" || ctype == "unsigned") return "%u";
+  if (ctype == "const char *" || ctype == "const char*") return "%s";
+  return "";
+}
+
+std::string lower_cout_line(const std::string &line, bool &used_stdio,
+                            const std::map<std::string, std::string> &var_types) {
   const std::string stripped = trim(line);
   const std::string indent = leading_indent(line);
   std::string chain;
+  bool to_stderr = false;
 
   if (starts_with(stripped, "std::cout")) {
     chain = trim(stripped.substr(std::string("std::cout").size()));
   } else if (starts_with(stripped, "cout")) {
     chain = trim(stripped.substr(std::string("cout").size()));
+  } else if (starts_with(stripped, "std::cerr")) {
+    chain = trim(stripped.substr(std::string("std::cerr").size()));
+    to_stderr = true;
+  } else if (starts_with(stripped, "cerr")) {
+    chain = trim(stripped.substr(std::string("cerr").size()));
+    to_stderr = true;
   } else {
     return line;
   }
@@ -162,13 +181,23 @@ std::string lower_cout_line(const std::string &line, bool &used_stdio) {
       format += "%u";
       args.push_back(part);
     } else {
-      format += "%d";
+      // Check if part is a simple identifier with a known type
+      const std::string fs = [&]() -> std::string {
+        const auto it = var_types.find(trim(part));
+        if (it != var_types.end()) return format_spec_for_type(it->second);
+        return "";
+      }();
+      format += fs.empty() ? "%d" : fs;
       args.push_back(part);
     }
   }
 
   std::ostringstream lowered;
-  lowered << indent << "printf(\"" << format << "\"";
+  if (to_stderr) {
+    lowered << indent << "fprintf(stderr, \"" << format << "\"";
+  } else {
+    lowered << indent << "printf(\"" << format << "\"";
+  }
   for (const std::string &arg : args) {
     lowered << ", " << arg;
   }
@@ -184,13 +213,26 @@ IostreamResult lower_iostreams(const std::string &source) {
   std::ostringstream out;
   std::string line;
 
+  // Track declared variable types so cout can pick the right format specifier.
+  std::map<std::string, std::string> var_types;
+  // Matches: double y = ...; / char c = ...; / const char * s = ...;
+  static const std::regex var_decl_re(
+      R"(^\s*(double|float|char|long|unsigned(?:\s+int)?|const\s+char\s*\*)\s+([A-Za-z_]\w*)\s*[=;])");
+
   while (std::getline(in, line)) {
     const std::string stripped = trim(line);
     if (stripped == "#include <iostream>" || stripped == "using namespace std;") {
       result.used_stdio = true;
       continue;
     }
-    out << lower_cout_line(line, result.used_stdio) << '\n';
+    std::smatch dm;
+    if (std::regex_search(line, dm, var_decl_re)) {
+      std::string ctype = dm[1].str();
+      // normalise whitespace in type (e.g. "const char  *" → "const char *")
+      ctype = std::regex_replace(ctype, std::regex(R"(\s+)"), " ");
+      var_types[dm[2].str()] = ctype;
+    }
+    out << lower_cout_line(line, result.used_stdio, var_types) << '\n';
   }
 
   result.source = out.str();

@@ -30,7 +30,8 @@ cc /tmp/out.c -I inject/c build/inject/libdpp_inject.a -o /tmp/out && /tmp/out
 | Document | Contents |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | Pipeline overview and project layout |
-| [docs/roadmap.md](docs/roadmap.md) | Planned features and priorities |
+| [docs/roadmap.md](docs/roadmap.md) | Near-term and later work items |
+| [docs/planned-features.md](docs/planned-features.md) | C++11–C++26 features targeted for support, with transpile difficulty and user reception notes |
 | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) | Code and contribution conventions |
 | [docs/unsupported.md](docs/unsupported.md) | Intentionally unsupported C++ features |
 | [docs/decisions.md](docs/decisions.md) | Resolved design decisions |

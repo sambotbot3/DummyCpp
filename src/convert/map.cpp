@@ -74,6 +74,10 @@ std::string destroy_fn(const MapVar &var) {
   return var.unordered ? "dpp_unordered_map_destroy" : "dpp_map_destroy";
 }
 
+std::string contains_fn(const MapVar &var) {
+  return var.unordered ? "dpp_unordered_map_contains" : "dpp_map_contains";
+}
+
 std::string init_fn(const MapVar &var) {
   return var.unordered ? "dpp_unordered_map_init" : "dpp_map_init";
 }
@@ -135,6 +139,14 @@ std::string lower_map_exprs(std::string line, const std::map<std::string, MapVar
     const MapVar &var = entry.second;
     line = std::regex_replace(line, std::regex("\\b" + name + R"(\.size\s*\(\s*\))"),
                               size_fn(var) + "(" + map_access(name, var) + ")");
+    // .count(key) and .contains(key) → dpp_map_contains / dpp_unordered_map_contains
+    const std::string cfn = contains_fn(var);
+    const std::string kst = key_storage_type(var.key_type);
+    const std::string access = map_access(name, var);
+    line = std::regex_replace(line, std::regex("\\b" + name + R"(\.count\s*\(\s*([^)]+)\s*\))"),
+                              cfn + "(" + access + ", &(" + kst + "){$1})");
+    line = std::regex_replace(line, std::regex("\\b" + name + R"(\.contains\s*\(\s*([^)]+)\s*\))"),
+                              cfn + "(" + access + ", &(" + kst + "){$1})");
     line = std::regex_replace(line, std::regex("\\b" + name + R"(\s*\[\s*([^\]]+)\s*\])"),
                               value_expr(name, var, "$1"));
   }

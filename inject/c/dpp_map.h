@@ -36,6 +36,7 @@ void dpp_map_init(dpp_map *map, size_t key_size, size_t value_size, dpp_map_comp
 void dpp_map_destroy(dpp_map *map);
 size_t dpp_map_size(const dpp_map *map);
 void *dpp_map_get_or_insert(dpp_map *map, const void *key);
+int dpp_map_contains(const dpp_map *map, const void *key);
 const void *dpp_map_key_at(const dpp_map *map, size_t index);
 void *dpp_map_value_at(dpp_map *map, size_t index);
 const void *dpp_map_const_value_at(const dpp_map *map, size_t index);
@@ -45,6 +46,7 @@ void dpp_unordered_map_init(dpp_unordered_map *map, size_t key_size, size_t valu
 void dpp_unordered_map_destroy(dpp_unordered_map *map);
 size_t dpp_unordered_map_size(const dpp_unordered_map *map);
 void *dpp_unordered_map_get_or_insert(dpp_unordered_map *map, const void *key);
+int dpp_unordered_map_contains(const dpp_unordered_map *map, const void *key);
 const void *dpp_unordered_map_key_at(const dpp_unordered_map *map, size_t index);
 void *dpp_unordered_map_value_at(dpp_unordered_map *map, size_t index);
 const void *dpp_unordered_map_const_value_at(const dpp_unordered_map *map, size_t index);

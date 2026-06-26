@@ -173,6 +173,19 @@ void *dpp_map_get_or_insert(dpp_map *map, const void *key) {
   return entries[pos].value;
 }
 
+int dpp_map_contains(const dpp_map *map, const void *key) {
+  const dpp_map_entry *entries = (const dpp_map_entry *)map->entries;
+  size_t lo = 0, hi = map->size;
+  while (lo < hi) {
+    const size_t mid = lo + (hi - lo) / 2;
+    const int cmp = map->compare(entries[mid].key, key);
+    if (cmp == 0) return 1;
+    if (cmp < 0) lo = mid + 1;
+    else hi = mid;
+  }
+  return 0;
+}
+
 const void *dpp_map_key_at(const dpp_map *map, size_t index) {
   const dpp_map_entry *entries = (const dpp_map_entry *)map->entries;
   return entries[index].key;
@@ -256,6 +269,17 @@ static size_t dpp_unordered_map_slot_at(const dpp_unordered_map *map, size_t ind
     ++seen;
   }
   return map->capacity;
+}
+
+int dpp_unordered_map_contains(const dpp_unordered_map *map, const void *key) {
+  if (map->capacity == 0) return 0;
+  const dpp_unordered_map_entry *entries = (const dpp_unordered_map_entry *)map->entries;
+  size_t slot = map->hash(key) % map->capacity;
+  while (entries[slot].occupied) {
+    if (map->equal(entries[slot].key, key)) return 1;
+    slot = (slot + 1) % map->capacity;
+  }
+  return 0;
 }
 
 const void *dpp_unordered_map_key_at(const dpp_unordered_map *map, size_t index) {
