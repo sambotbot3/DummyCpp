@@ -39,6 +39,7 @@ struct Record {
   bool was_class = false;
   std::vector<std::string> fields;
   std::vector<std::string> field_names;
+  std::map<std::string, std::string> field_defaults; // field_name → default value expression
   std::vector<Method> methods;
   std::vector<Constructor> constructors;
 };
@@ -55,6 +56,31 @@ bool word_boundary_after(const std::string &source, std::size_t pos) {
   }
   const unsigned char ch = static_cast<unsigned char>(source[pos]);
   return !std::isalnum(ch) && ch != '_';
+}
+
+// Split "TYPE NAME = DEFAULT;" into ("TYPE NAME;", "DEFAULT").
+// Returns ("", "") if no default is present.
+std::pair<std::string, std::string> split_field_default(const std::string &line) {
+  int angle = 0, paren = 0;
+  for (std::size_t i = 0; i < line.size(); ++i) {
+    const char c = line[i];
+    if (c == '<') { ++angle; continue; }
+    if (c == '>') { if (angle > 0) --angle; continue; }
+    if (c == '(') { ++paren; continue; }
+    if (c == ')') { if (paren > 0) --paren; continue; }
+    if (c == '=' && angle == 0 && paren == 0) {
+      if (i + 1 < line.size() && line[i + 1] == '=') { ++i; continue; } // ==
+      if (i > 0) {
+        const char prev = line[i - 1];
+        if (prev == '!' || prev == '<' || prev == '>' || prev == '=') continue;
+      }
+      const std::string decl = trim(line.substr(0, i)) + ";";
+      std::string dval = trim(line.substr(i + 1));
+      if (!dval.empty() && dval.back() == ';') dval.pop_back();
+      return {decl, trim(dval)};
+    }
+  }
+  return {line, ""};
 }
 
 std::string field_name_from_decl(const std::string &decl) {
@@ -320,8 +346,13 @@ Record parse_record_body(const std::string &kind, const std::string &name,
     }
 
     if (line.find('(') == std::string::npos && !line.empty() && line.back() == ';') {
-      record.fields.push_back(line);
-      record.field_names.push_back(field_name_from_decl(line));
+      auto [stripped_decl, default_val] = split_field_default(line);
+      const std::string fname = field_name_from_decl(stripped_decl);
+      record.fields.push_back(stripped_decl);
+      record.field_names.push_back(fname);
+      if (!default_val.empty()) {
+        record.field_defaults[fname] = default_val;
+      }
     }
   }
 
@@ -374,6 +405,30 @@ std::string emit_record(const Record &record, const std::map<std::string, Record
             << initializer.second << ");\n";
       } else {
         out << "  self->" << initializer.first << " = " << initializer.second << ";\n";
+      }
+    }
+    // Apply default member initializers for fields not covered by the initializer list.
+    for (const std::string &fname : record.field_names) {
+      if (std::find(covered.begin(), covered.end(), fname) != covered.end()) continue;
+      const auto it = record.field_defaults.find(fname);
+      if (it != record.field_defaults.end()) {
+        out << "  self->" << fname << " = " << it->second << ";\n";
+      }
+    }
+    out << "}\n";
+  }
+
+  // If there are no explicit constructors but there are default member initializers,
+  // emit a parameterless _init that applies them.
+  if (record.constructors.empty() && !record.field_defaults.empty()) {
+    out << "\nstatic inline void " << record.name << "_init(" << record.name << " *self) {\n";
+    for (const std::string &sfname : string_field_names) {
+      out << "  dpp_string_init(&self->" << sfname << ");\n";
+    }
+    for (const std::string &fname : record.field_names) {
+      const auto it = record.field_defaults.find(fname);
+      if (it != record.field_defaults.end()) {
+        out << "  self->" << fname << " = " << it->second << ";\n";
       }
     }
     out << "}\n";
@@ -678,11 +733,36 @@ std::string lower_method_calls(const std::string &source, const std::map<std::st
 
 } // namespace
 
+// Emit _init calls for default-constructible records declared as "Type name;".
+std::string lower_default_ctor_locals(const std::string &source,
+                                      const std::map<std::string, Record> &records) {
+  std::string out = source;
+  for (const auto &entry : records) {
+    const std::string &type = entry.first;
+    const Record &record = entry.second;
+
+    // Does this type have a parameterless _init?
+    bool has_default_init = !record.field_defaults.empty(); // auto-generated
+    for (const Constructor &ctor : record.constructors) {
+      if (trim(ctor.params).empty()) { has_default_init = true; break; }
+    }
+    if (!has_default_init) continue;
+
+    // "  Type name;" (indented, no parens) → "  Type name;\n  Type_init(&name);"
+    const std::regex default_decl_re("(^|\\n)([ \\t]+)" + type +
+                                     R"(\s+([A-Za-z_]\w*)\s*;)");
+    out = std::regex_replace(out, default_decl_re,
+                             "$1$2" + type + " $3;\n$2" + type + "_init(&$3);");
+  }
+  return out;
+}
+
 RecordsResult lower_records(const std::string &source) {
   RecordsResult result;
   std::map<std::string, Record> records;
   result.source = lower_record_declarations(source, records, result.lowered_records);
   result.source = lower_constructor_locals(result.source, records);
+  result.source = lower_default_ctor_locals(result.source, records);
   result.source = lower_aggregate_locals(result.source, records);
   result.source = lower_method_calls(result.source, records);
   return result;
