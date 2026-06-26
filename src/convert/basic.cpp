@@ -55,6 +55,91 @@ static std::string infer_auto_type(const std::string &init) {
   return "";
 }
 
+// Split an enum body on top-level commas, returning (name, value_suffix) pairs.
+static std::vector<std::pair<std::string, std::string>>
+parse_enum_entries(const std::string &body) {
+  std::vector<std::pair<std::string, std::string>> result;
+  std::size_t start = 0;
+  int depth = 0;
+  for (std::size_t i = 0; i <= body.size(); ++i) {
+    const char c = (i < body.size()) ? body[i] : ','; // sentinel
+    if (c == '(' || c == '{') { ++depth; continue; }
+    if (c == ')' || c == '}') { if (depth > 0) --depth; continue; }
+    if (c == ',' && depth == 0) {
+      const std::string entry = trim(body.substr(start, i - start));
+      start = i + 1;
+      if (entry.empty()) continue;
+      const auto eq = entry.find('=');
+      if (eq == std::string::npos) {
+        result.push_back({entry, ""});
+      } else {
+        result.push_back({trim(entry.substr(0, eq)), " " + trim(entry.substr(eq))});
+      }
+    }
+  }
+  return result;
+}
+
+std::string lower_enums(const std::string &source) {
+  struct EnumClass {
+    std::string name;
+    std::vector<std::string> enumerator_names;
+  };
+  std::vector<EnumClass> enum_classes;
+
+  // Collect enum class info before any rewriting.
+  static const std::regex ec_scan_re(
+      R"(\benum\s+class\s+([A-Za-z_]\w*)\s*(?::\s*[A-Za-z_][\w:]*\s*)?\{([^}]*)\}\s*;)");
+  for (std::sregex_iterator it(source.begin(), source.end(), ec_scan_re);
+       it != std::sregex_iterator(); ++it) {
+    EnumClass ec;
+    ec.name = (*it)[1].str();
+    for (const auto &e : parse_enum_entries((*it)[2].str()))
+      ec.enumerator_names.push_back(e.first);
+    enum_classes.push_back(ec);
+  }
+
+  std::string out = source;
+
+  // Plain enum → typedef enum (excludes enum class via negative lookahead).
+  out = std::regex_replace(
+      out,
+      std::regex(R"(\benum\s+(?!class\b)([A-Za-z_]\w*)\s*\{([^}]*)\}\s*;)"),
+      "typedef enum $1 {$2} $1;");
+
+  // Rewrite enum class declarations in reverse order (to keep offsets valid).
+  {
+    std::vector<std::smatch> matches;
+    for (std::sregex_iterator it(out.begin(), out.end(), ec_scan_re);
+         it != std::sregex_iterator(); ++it)
+      matches.push_back(*it);
+    for (int i = static_cast<int>(matches.size()) - 1; i >= 0; --i) {
+      const std::smatch &m = matches[i];
+      const std::string enum_name = m[1].str();
+      const auto entries = parse_enum_entries(m[2].str());
+      std::string new_body;
+      for (std::size_t j = 0; j < entries.size(); ++j) {
+        if (j > 0) new_body += ", ";
+        new_body += enum_name + "_" + entries[j].first;
+        if (!entries[j].second.empty()) new_body += entries[j].second;
+      }
+      const std::string repl =
+          "typedef enum " + enum_name + "_e { " + new_body + " } " + enum_name + ";";
+      out.replace(m.position(), m.length(), repl);
+    }
+  }
+
+  // Replace all EnumName::Enumerator references.
+  for (const auto &ec : enum_classes) {
+    for (const auto &en : ec.enumerator_names) {
+      out = std::regex_replace(
+          out, std::regex("\\b" + ec.name + "::" + en + "\\b"), ec.name + "_" + en);
+    }
+  }
+
+  return out;
+}
+
 std::string lower_auto_types(const std::string &source) {
   static const std::regex auto_re(
       R"(^(\s*)(const\s+)?auto\s+([A-Za-z_]\w*)\s*=\s*(.+)\s*;\s*$)");
