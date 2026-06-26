@@ -55,17 +55,41 @@ bool is_char_literal(const std::string &value) {
   return value.size() >= 3 && value.front() == '\'' && value.back() == '\'';
 }
 
+// Split a cout chain on top-level << operators, respecting string/char literals
+// and parenthesised sub-expressions so that "a << b" or (x << 1) are not split.
 std::vector<std::string> split_cout_chain(const std::string &chain) {
   std::vector<std::string> parts;
   std::size_t start = 0;
-  while (start < chain.size()) {
-    const std::size_t pos = chain.find("<<", start);
-    if (pos == std::string::npos) {
-      parts.push_back(trim(chain.substr(start)));
-      break;
+  bool in_string = false;
+  bool in_char = false;
+  int paren_depth = 0;
+
+  for (std::size_t i = 0; i < chain.size(); ++i) {
+    const char c = chain[i];
+    if (in_string) {
+      if (c == '\\') { ++i; }       // skip escape sequence
+      else if (c == '"') { in_string = false; }
+      continue;
     }
-    parts.push_back(trim(chain.substr(start, pos - start)));
-    start = pos + 2;
+    if (in_char) {
+      if (c == '\\') { ++i; }
+      else if (c == '\'') { in_char = false; }
+      continue;
+    }
+    if (c == '"') { in_string = true; continue; }
+    if (c == '\'') { in_char = true; continue; }
+    if (c == '(') { ++paren_depth; continue; }
+    if (c == ')') { if (paren_depth > 0) --paren_depth; continue; }
+
+    if (paren_depth == 0 && c == '<' && i + 1 < chain.size() && chain[i + 1] == '<') {
+      parts.push_back(trim(chain.substr(start, i - start)));
+      start = i + 2;
+      ++i; // skip second '<'
+    }
+  }
+  const std::string tail = trim(chain.substr(start));
+  if (!tail.empty()) {
+    parts.push_back(tail);
   }
   return parts;
 }

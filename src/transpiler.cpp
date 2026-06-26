@@ -3,6 +3,7 @@
 #include "dpp/convert/algorithm.h"
 #include "dpp/convert/assertions.h"
 #include "dpp/convert/basic.h"
+#include "dpp/convert/free_functions.h"
 #include "dpp/convert/iostream.h"
 #include "dpp/convert/map.h"
 #include "dpp/convert/memory.h"
@@ -34,6 +35,7 @@ std::string transpile_bootstrap_subset(const std::string &source) {
 
   std::string out = convert::lower_function_templates(parsed).source;
   out = convert::lower_records(out).source;
+  out = convert::lower_free_functions(out).source;
   convert::VectorResult vector = convert::lower_vectors(out);
   out = vector.source;
   convert::MapResult map = convert::lower_maps(out);

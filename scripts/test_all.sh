@@ -36,8 +36,18 @@ for cpp in "${ROOT_DIR}"/tests/cases/*.cpp; do
   c_file="${case_dir}/${name}.generated.c"
   c_exe="${case_dir}/${name}.c.exe"
 
-  c++ -std=c++11 "${cpp}" -o "${cpp_exe}"
-  "${BUILD_DIR}/dpp" "${cpp}" -o "${c_file}"
+  # Optional per-case extra flags (one token per line; use ROOTDIR as a placeholder).
+  extra_flags=()
+  flags_file="${ROOT_DIR}/tests/cases/${name}.flags"
+  if [ -f "${flags_file}" ]; then
+    while IFS= read -r token; do
+      [[ -z "${token}" || "${token}" == \#* ]] && continue
+      extra_flags+=("${token//ROOTDIR/${ROOT_DIR}}")
+    done < "${flags_file}"
+  fi
+
+  c++ -std=c++11 "${extra_flags[@]+"${extra_flags[@]}"}" "${cpp}" -o "${cpp_exe}"
+  "${BUILD_DIR}/dpp" "${extra_flags[@]+"${extra_flags[@]}"}" "${cpp}" -o "${c_file}"
   cc "${c_file}" -I "${ROOT_DIR}/inject/c" "${INJECT_LIB}" -o "${c_exe}"
 
   run_capture "${cpp_exe}" "${case_dir}/cpp.stdout" "${case_dir}/cpp.status"

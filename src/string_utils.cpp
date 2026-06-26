@@ -1,5 +1,7 @@
 #include "dpp/string_utils.h"
 
+#include <cstdint>
+#include <cstdio>
 #include <sstream>
 
 namespace dpp {
@@ -83,6 +85,15 @@ std::vector<std::string> split_commas(const std::string &value) {
 
 bool starts_with(const std::string &value, const std::string &prefix) {
   return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
+}
+
+std::string fnv1a_32_hex(const std::string &s) {
+  uint32_t h = 2166136261u;
+  for (unsigned char c : s)
+    h = (h ^ c) * 16777619u;
+  char buf[9];
+  std::snprintf(buf, sizeof(buf), "%08x", h);
+  return std::string(buf);
 }
 
 } // namespace dpp

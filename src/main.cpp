@@ -8,19 +8,21 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
 struct Options {
   std::string input_path;
   std::string output_path;
+  std::vector<std::string> include_dirs;
 };
 
 void print_help(std::ostream &out) {
   out << "dpp - DummyCpp C++ to C transpiler\n"
       << "\n"
       << "Usage:\n"
-      << "  dpp <input.cpp> -o <output.c>\n"
+      << "  dpp <input.cpp> [-I <dir>]... -o <output.c>\n"
       << "\n"
       << "Current bootstrap support:\n"
       << "  - simple struct declarations with fields\n"
@@ -44,6 +46,13 @@ Options parse_args(int argc, char **argv) {
         throw std::runtime_error("missing path after -o");
       }
       opts.output_path = argv[++i];
+    } else if (arg == "-I") {
+      if (i + 1 >= argc) {
+        throw std::runtime_error("missing path after -I");
+      }
+      opts.include_dirs.push_back(argv[++i]);
+    } else if (arg.size() > 2 && arg[0] == '-' && arg[1] == 'I') {
+      opts.include_dirs.push_back(arg.substr(2));
     } else if (opts.input_path.empty()) {
       opts.input_path = arg;
     } else {
@@ -84,7 +93,7 @@ int main(int argc, char **argv) {
     const Options opts = parse_args(argc, argv);
     const std::string source = read_file(opts.input_path);
     const dpp::parser::PreprocessResult preprocessed =
-        dpp::parser::preprocess_translation_unit_file(opts.input_path, source);
+        dpp::parser::preprocess_translation_unit_file(opts.input_path, source, opts.include_dirs);
     write_file(opts.output_path, dpp::transpile_bootstrap_subset(preprocessed.source));
     return 0;
   } catch (const std::exception &err) {

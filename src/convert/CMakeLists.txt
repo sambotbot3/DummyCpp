@@ -3,6 +3,7 @@ add_library(dpp_convert
   assertions.cpp
   basic.cpp
   cleanup.cpp
+  free_functions.cpp
   iostream.cpp
   map.cpp
   memory.cpp

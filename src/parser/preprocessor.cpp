@@ -31,6 +31,7 @@ struct CachedHeader {
 
 struct Context {
   std::string root_dir;
+  std::vector<std::string> search_dirs; // canonical paths of -I dirs
   std::map<std::string, CachedHeader> cache;
   std::vector<std::string> active_stack;
   std::map<std::string, std::vector<std::string>> injected_headers;
@@ -238,18 +239,41 @@ std::string expand_source(Context &context, const std::string &source, const std
                           bool is_header, bool &include_once,
                           std::vector<std::string> &direct_injected);
 
+// Tries relative to including_path first, then each search_dir. Returns empty if not found.
+std::string find_header_candidate(const Context &context, const std::string &include_path,
+                                  const std::string &including_path) {
+  const std::string rel = join_path(dirname_of(including_path), include_path);
+  if (path_exists(rel))
+    return rel;
+  for (const std::string &dir : context.search_dirs) {
+    const std::string candidate = join_path(dir, include_path);
+    if (path_exists(candidate))
+      return candidate;
+  }
+  return "";
+}
+
 std::string expand_header(Context &context, const std::string &include_path,
                           const std::string &including_path) {
   if (!include_path.empty() && include_path[0] == '/') {
     throw std::runtime_error("absolute quoted include path is not supported: " + include_path);
   }
 
-  const std::string candidate = join_path(dirname_of(including_path), include_path);
-  if (!path_exists(candidate)) {
+  const std::string candidate = find_header_candidate(context, include_path, including_path);
+  if (candidate.empty()) {
     throw std::runtime_error("missing header '" + include_path + "' included from " + including_path);
   }
   const std::string canonical = canonical_path(candidate);
-  if (!is_inside_root(context.root_dir, canonical)) {
+
+  // Headers must reside within the input root or an explicitly specified -I directory.
+  bool allowed = is_inside_root(context.root_dir, canonical);
+  for (const std::string &dir : context.search_dirs) {
+    if (is_inside_root(dir, canonical)) {
+      allowed = true;
+      break;
+    }
+  }
+  if (!allowed) {
     throw std::runtime_error("quoted include escapes input root: " + canonical);
   }
 
@@ -328,8 +352,8 @@ std::string expand_source(Context &context, const std::string &source, const std
       continue;
     }
 
-    const std::string candidate = join_path(dirname_of(current_path), include.path);
-    if (!path_exists(candidate)) {
+    const std::string candidate = find_header_candidate(context, include.path, current_path);
+    if (candidate.empty()) {
       throw std::runtime_error("missing header '" + include.path + "' included from " + current_path);
     }
     const std::string canonical = canonical_path(candidate);
@@ -348,11 +372,18 @@ std::string expand_source(Context &context, const std::string &source, const std
 } // namespace
 
 PreprocessResult preprocess_translation_unit_file(const std::string &input_path,
-                                                  const std::string &source) {
+                                                  const std::string &source,
+                                                  const std::vector<std::string> &include_dirs) {
   try {
     Context context;
     const std::string canonical_input = canonical_path(input_path);
     context.root_dir = dirname_of(canonical_input);
+    for (const std::string &dir : include_dirs) {
+      if (!path_exists(dir)) {
+        throw std::runtime_error("include directory does not exist: " + dir);
+      }
+      context.search_dirs.push_back(canonical_path(dir));
+    }
     bool include_once = false;
     std::vector<std::string> direct_injected;
     PreprocessResult result;

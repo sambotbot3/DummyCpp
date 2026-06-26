@@ -1,3 +1,4 @@
+#include "dpp/ir.h"
 #include "dpp/parser/parser.h"
 #include "dpp/parser/syntax_checker.h"
 
@@ -82,6 +83,39 @@ void test_unsupported_diagnostics() {
   assert(dpp::parser::has_errors(diagnostics));
 }
 
+void test_ir_extraction() {
+  const dpp::parser::ParsedSource parsed = dpp::parser::parse_translation_unit(
+      "struct Point {\n"
+      "    int x;\n"
+      "    int y;\n"
+      "    int sum() const { return x + y; }\n"
+      "};\n"
+      "\n"
+      "int scale(int v, int factor) {\n"
+      "    return v * factor;\n"
+      "}\n");
+
+  const dpp::ir::DppTranslationUnit tu = dpp::ir::extract_from_parsed(parsed);
+
+  assert(tu.records.size() == 1);
+  const dpp::ir::DppRecord &rec = tu.records.front();
+  assert(rec.name == "Point");
+  assert(rec.fields.size() == 2);
+  assert(rec.fields[0].name == "x");
+  assert(rec.fields[0].type == "int");
+  assert(rec.fields[1].name == "y");
+  assert(rec.method_names.size() == 1);
+  assert(rec.method_names[0] == "sum");
+
+  assert(tu.functions.size() == 1);
+  const dpp::ir::DppFunction &fn = tu.functions.front();
+  assert(fn.name == "scale");
+  assert(fn.return_type == "int");
+  assert(fn.params.size() == 2);
+  assert(fn.params[0].name == "v");
+  assert(fn.params[1].name == "factor");
+}
+
 } // namespace
 
 int main() {
@@ -89,5 +123,6 @@ int main() {
   test_tokens_and_locations();
   test_function_template_parse();
   test_unsupported_diagnostics();
+  test_ir_extraction();
   return 0;
 }
