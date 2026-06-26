@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstring>
 #include <map>
+#include <regex>
 #include <set>
 #include <sstream>
 #include <string>
@@ -49,7 +50,7 @@ bool parse_func_sig(const std::string &line, std::string &ret, std::string &name
   if (paren_close == std::string::npos || paren_close < paren_open) return false;
 
   const std::string after = trim(line.substr(paren_close + 1));
-  if (after != "{" && after != ";") return false;
+  if (after.empty() || (after != ";" && after[0] != '{')) return false;
 
   // Extract name: last identifier in the text before '('
   const std::string before = line.substr(0, paren_open);
@@ -98,6 +99,78 @@ std::string build_signature(const std::string &ret, const std::string &params_ra
   }
   sig << ")";
   return sig.str();
+}
+
+// Lower "const T &name" → "const T name" in a single parameter string.
+// Passing const refs as values is semantically equivalent for callers/callees when
+// the function cannot modify through the reference.
+std::string lower_const_ref_param(const std::string &param) {
+  const std::string p = trim(param);
+  static const std::regex re(R"(const\s+([A-Za-z_]\w*)\s*&\s*([A-Za-z_]\w*)\s*)");
+  std::smatch m;
+  if (std::regex_match(p, m, re)) {
+    return "const " + m[1].str() + " " + m[2].str();
+  }
+  return p;
+}
+
+// Find the ')' that closes the parameter-list '(' at open_pos,
+// stopping if a '{' is seen at depth 0 (that would be a brace-enclosed body).
+std::size_t matching_param_close(const std::string &s, std::size_t open_pos) {
+  int depth = 0;
+  for (std::size_t i = open_pos; i < s.size(); ++i) {
+    if (s[i] == '(') {
+      ++depth;
+    } else if (s[i] == ')') {
+      --depth;
+      if (depth == 0) return i;
+    } else if (s[i] == '{' && depth == 0) {
+      return std::string::npos;
+    }
+  }
+  return std::string::npos;
+}
+
+// If the line is a function declaration/definition with const-ref params, rewrite them.
+std::string lower_const_ref_params_in_line(const std::string &line) {
+  if (line.find('&') == std::string::npos) return line;
+
+  // Find the first '(' that opens the parameter list.
+  // Skip lines that start with a keyword — is_skipped_line() guards callers already,
+  // but be defensive: require an identifier character before '('.
+  const std::size_t paren_open = line.find('(');
+  if (paren_open == 0 || paren_open == std::string::npos) return line;
+
+  // Check that there's an identifier immediately before '(': must be a function name.
+  {
+    std::size_t j = paren_open;
+    while (j > 0 && line[j - 1] == ' ') --j;
+    if (j == 0 || !is_ident_char(line[j - 1])) return line;
+  }
+
+  const std::size_t paren_close = matching_param_close(line, paren_open);
+  if (paren_close == std::string::npos) return line;
+
+  const std::string params_raw = line.substr(paren_open + 1, paren_close - paren_open - 1);
+  if (params_raw.find('&') == std::string::npos) return line;
+
+  std::vector<std::string> parts = split_commas(params_raw);
+  bool changed = false;
+  for (std::string &p : parts) {
+    const std::string lowered = lower_const_ref_param(p);
+    if (lowered != trim(p)) {
+      p = lowered;
+      changed = true;
+    }
+  }
+  if (!changed) return line;
+
+  std::string new_params;
+  for (std::size_t i = 0; i < parts.size(); ++i) {
+    if (i > 0) new_params += ", ";
+    new_params += parts[i];
+  }
+  return line.substr(0, paren_open + 1) + new_params + line.substr(paren_close);
 }
 
 // Replace word-boundary occurrences of `orig` immediately followed by '(' with `mangled`.
@@ -161,16 +234,24 @@ FreeFunctionResult lower_free_functions(const std::string &source) {
     rename_map[name] = name + "_" + fnv1a_32_hex(sig);
   }
 
-  if (rename_map.empty()) {
-    result.source = source;
-    return result;
-  }
-
   std::string out = source;
   for (const auto &[orig, mangled] : rename_map)
     out = rename_calls(out, orig, mangled);
 
-  result.source = out;
+  // Rewrite const-ref params in function signatures.
+  std::vector<std::string> lines = split_lines(out);
+  bool any_ref = false;
+  for (std::string &line : lines) {
+    if (!is_skipped_line(line) && line.find('&') != std::string::npos) {
+      line = lower_const_ref_params_in_line(line);
+      any_ref = true;
+    }
+  }
+  if (!rename_map.empty() || any_ref) {
+    result.source = join_lines(lines);
+  } else {
+    result.source = source;
+  }
   return result;
 }
 

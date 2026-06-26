@@ -80,6 +80,8 @@ std::string lower_string_exprs(std::string line, const std::map<std::string, boo
                               "dpp_string_size(&" + name + ")");
     line = std::regex_replace(line, std::regex("\\b" + name + R"(\.c_str\s*\(\s*\))"),
                               "dpp_string_c_str(&" + name + ")");
+    line = std::regex_replace(line, std::regex(R"(<<\s*)" + name + R"(\b(?!\s*\[))"),
+                              "<< dpp_string_c_str(&" + name + ")");
   }
   return line;
 }
@@ -132,6 +134,25 @@ std::vector<std::string> close_scope_lines(const std::string &indent,
   return destroy_lines(indent, closing);
 }
 
+std::vector<std::string> peek_destroy_lines(const std::string &indent,
+                                            const std::vector<ScopedString> &strings,
+                                            std::size_t remaining_depth) {
+  std::vector<ScopedString> closing;
+  for (const ScopedString &string_var : strings) {
+    if (string_var.depth > remaining_depth) {
+      closing.push_back(string_var);
+    }
+  }
+  return destroy_lines(indent, closing);
+}
+
+bool is_loop_kw(const std::string &s, const std::string &kw) {
+  if (s.size() < kw.size() || s.compare(0, kw.size(), kw) != 0) return false;
+  if (s.size() == kw.size()) return true;
+  const char next = s[kw.size()];
+  return !std::isalnum(static_cast<unsigned char>(next)) && next != '_';
+}
+
 } // namespace
 
 StringResult lower_strings(const std::string &source) {
@@ -140,16 +161,24 @@ StringResult lower_strings(const std::string &source) {
   std::vector<std::string> out;
   std::size_t brace_depth = 0;
   bool inside_record = false;
+  std::vector<std::size_t> loop_depths;
 
   auto update_scope = [&](const std::string &line) {
     brace_depth += count_char(line, '{');
     const std::size_t closes = count_char(line, '}');
     brace_depth = closes > brace_depth ? 0 : brace_depth - closes;
+    while (!loop_depths.empty() && brace_depth <= loop_depths.back()) {
+      loop_depths.pop_back();
+    }
   };
 
   for (const std::string &line : split_lines(source)) {
     const std::size_t before_depth = brace_depth;
     const std::string stripped = trim(line);
+    if (is_loop_kw(stripped, "for") || is_loop_kw(stripped, "while") ||
+        is_loop_kw(stripped, "do")) {
+      loop_depths.push_back(before_depth);
+    }
     const bool starts_record =
         std::regex_search(stripped, std::regex(R"(^(?:typedef\s+)?(?:struct|class)\b.*\{\s*$)"));
     if (starts_record) {
@@ -258,6 +287,12 @@ StringResult lower_strings(const std::string &source) {
           closes > before_depth + opens ? std::size_t{0} : before_depth + opens - closes;
       const std::vector<std::string> cleanup =
           close_scope_lines(leading_indent(line), strings, remaining_depth);
+      out.insert(out.end(), cleanup.begin(), cleanup.end());
+    }
+    if (!loop_depths.empty() && !strings.empty() &&
+        (lowered_stripped == "break;" || lowered_stripped == "continue;")) {
+      const std::vector<std::string> cleanup =
+          peek_destroy_lines(leading_indent(lowered), strings, loop_depths.back());
       out.insert(out.end(), cleanup.begin(), cleanup.end());
     }
     out.push_back(lowered);

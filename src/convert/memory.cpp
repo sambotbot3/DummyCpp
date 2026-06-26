@@ -86,6 +86,27 @@ std::vector<std::string> close_scope_lines(const std::string &indent,
   return cleanup_lines(indent, closing);
 }
 
+// Like close_scope_lines but does NOT remove vars — for break/continue paths
+// where the normal scope-exit at } still needs to run on non-break iterations.
+std::vector<std::string> peek_cleanup_lines(const std::string &indent,
+                                            const std::vector<ScopedSmartVar> &vars,
+                                            std::size_t remaining_depth) {
+  std::vector<ScopedSmartVar> closing;
+  for (const ScopedSmartVar &var : vars) {
+    if (var.depth > remaining_depth) {
+      closing.push_back(var);
+    }
+  }
+  return cleanup_lines(indent, closing);
+}
+
+bool is_loop_kw(const std::string &s, const std::string &kw) {
+  if (s.size() < kw.size() || s.compare(0, kw.size(), kw) != 0) return false;
+  if (s.size() == kw.size()) return true;
+  const char next = s[kw.size()];
+  return !std::isalnum(static_cast<unsigned char>(next)) && next != '_';
+}
+
 std::string lower_smart_exprs(std::string line, const std::map<std::string, SmartVar> &vars) {
   for (const auto &entry : vars) {
     const std::string &name = entry.first;
@@ -143,6 +164,16 @@ MemoryResult lower_memory(const std::string &source) {
   std::vector<ScopedSmartVar> vars;
   std::vector<std::string> out;
   std::size_t brace_depth = 0;
+  std::vector<std::size_t> loop_depths;
+
+  auto update_depth_and_pop = [&](const std::string &l) {
+    brace_depth += count_char(l, '{');
+    const std::size_t closes = count_char(l, '}');
+    brace_depth = closes > brace_depth ? 0 : brace_depth - closes;
+    while (!loop_depths.empty() && brace_depth <= loop_depths.back()) {
+      loop_depths.pop_back();
+    }
+  };
 
   for (const std::string &line : split_lines(source)) {
     const std::string stripped = trim(line);
@@ -152,6 +183,10 @@ MemoryResult lower_memory(const std::string &source) {
     }
 
     const std::size_t before_depth = brace_depth;
+    if (is_loop_kw(stripped, "for") || is_loop_kw(stripped, "while") ||
+        is_loop_kw(stripped, "do")) {
+      loop_depths.push_back(before_depth);
+    }
     std::smatch match;
     static const std::regex heap_decl_re(
         R"(^(\s*)(?:std::)?(unique|shared)_ptr\s*<\s*([A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*\(\s*new\s+\3\s*\(([^)]*)\)\s*\)\s*;\s*$)");
@@ -165,9 +200,7 @@ MemoryResult lower_memory(const std::string &source) {
       for (const std::string &lowered : lower_heap_init(indent, kind, type, name, match[5].str())) {
         out.push_back(lowered);
       }
-      brace_depth += count_char(line, '{');
-      const std::size_t closes = count_char(line, '}');
-      brace_depth = closes > brace_depth ? 0 : brace_depth - closes;
+      update_depth_and_pop(line);
       continue;
     }
 
@@ -182,9 +215,7 @@ MemoryResult lower_memory(const std::string &source) {
       remember_var(vars, name, {type, true}, before_depth);
       out.push_back(indent + "dpp_shared_ptr " + name + ";");
       out.push_back(indent + "dpp_shared_copy(&" + name + ", &" + source_name + ");");
-      brace_depth += count_char(line, '{');
-      const std::size_t closes = count_char(line, '}');
-      brace_depth = closes > brace_depth ? 0 : brace_depth - closes;
+      update_depth_and_pop(line);
       continue;
     }
 
@@ -206,12 +237,16 @@ MemoryResult lower_memory(const std::string &source) {
             close_scope_lines(leading_indent(line), vars, remaining_depth);
         out.insert(out.end(), cleanup.begin(), cleanup.end());
       }
+      if (!loop_depths.empty() && !vars.empty() &&
+          (lowered_stripped == "break;" || lowered_stripped == "continue;")) {
+        const std::vector<std::string> cleanup =
+            peek_cleanup_lines(leading_indent(lowered), vars, loop_depths.back());
+        out.insert(out.end(), cleanup.begin(), cleanup.end());
+      }
       out.push_back(lowered);
     }
 
-    brace_depth += count_char(line, '{');
-    const std::size_t closes = count_char(line, '}');
-    brace_depth = closes > brace_depth ? 0 : brace_depth - closes;
+    update_depth_and_pop(line);
     if (before_depth == 1 && brace_depth == 0) {
       vars.clear();
     }

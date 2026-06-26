@@ -55,6 +55,19 @@ bool is_char_literal(const std::string &value) {
   return value.size() >= 3 && value.front() == '\'' && value.back() == '\'';
 }
 
+bool is_unsigned_expression(const std::string &value) {
+  return value.find("unsigned") != std::string::npos ||
+         starts_with(value, "(unsigned");
+}
+
+bool is_long_expression(const std::string &value) {
+  if (value.size() < 2) return false;
+  const char last = value.back();
+  if ((last != 'L' && last != 'l') || !std::isdigit(static_cast<unsigned char>(value[value.size() - 2])))
+    return false;
+  return true;
+}
+
 // Split a cout chain on top-level << operators, respecting string/char literals
 // and parenthesised sub-expressions so that "a << b" or (x << 1) are not split.
 std::vector<std::string> split_cout_chain(const std::string &chain) {
@@ -141,6 +154,12 @@ std::string lower_cout_line(const std::string &line, bool &used_stdio) {
       args.push_back(part);
     } else if (is_char_literal(part)) {
       format += "%c";
+      args.push_back(part);
+    } else if (is_long_expression(part)) {
+      format += "%ld";
+      args.push_back(part);
+    } else if (is_unsigned_expression(part)) {
+      format += "%u";
       args.push_back(part);
     } else {
       format += "%d";
