@@ -17,4 +17,4 @@ target_include_directories(dpp_convert PUBLIC
   ${PROJECT_SOURCE_DIR}/include
 )
 
-target_link_libraries(dpp_convert PRIVATE dpp_utils)
+target_link_libraries(dpp_convert PRIVATE dpp_utils dpp_parser)

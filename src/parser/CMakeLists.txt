@@ -3,7 +3,7 @@ add_library(dpp_parser
   parser.cpp
   preprocessor.cpp
   syntax_checker.cpp
-  ${PROJECT_SOURCE_DIR}/src/ir.cpp
+  ir.cpp
 )
 
 target_include_directories(dpp_parser PUBLIC

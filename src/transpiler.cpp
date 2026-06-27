@@ -52,7 +52,8 @@ std::string transpile_bootstrap_subset(const std::string &source) {
   out = algorithm.source;
   convert::MemoryResult memory = convert::lower_memory(out);
   out = memory.source;
-  convert::StringResult string = convert::lower_strings(out);
+  const parser::ParsedSource string_parsed = parser::parse_translation_unit(out);
+  convert::StringResult string = convert::lower_strings(out, string_parsed);
   out = string.source;
   convert::IostreamResult iostream = convert::lower_iostreams(out);
   out = iostream.source;

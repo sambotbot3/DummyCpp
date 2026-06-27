@@ -1,4 +1,4 @@
-#include "dpp/ir.h"
+#include "dpp/parser/ir.h"
 #include "dpp/parser/parser.h"
 #include "dpp/parser/syntax_checker.h"
 

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Never put an author in a commit message. And keep them brief, like a subject line on an email.
+Never put an author in a commit message. And keep the message brief, like a subject line on an email.
 Never do a git push to master/main.
 
 ## Project Overview
@@ -14,6 +14,8 @@ Difficult to implement and barely used portions of c++ will be noted in docs/ an
 The point of this is to avoid the C++ runtime. This transpiler now has to handle alot of the complexity that the virtual tables handles in C++. 
 
 The transpiled c should be as readable as possible, however sometimes messy macros may be best. 
+
+Lowering passes run after lexing and syntax checking complete. `parse_translation_unit` tokenizes the source and `check_bootstrap_syntax` rejects unsupported constructs; only then do the convert passes run in fixed order. We will have to recreate large parts of c++ stdlib in c. With some conversions being simple like std::string > dpp_string.
 
 ## Build Commands
 

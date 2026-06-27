@@ -1,7 +1,8 @@
-#include "dpp/ir.h"
+#include "dpp/parser/ir.h"
 #include "dpp/string_utils.h"
 
 #include <cctype>
+#include <limits>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -226,6 +227,191 @@ DppTranslationUnit extract_from_parsed(const parser::ParsedSource &parsed) {
   tu.records = extract_records(parsed.text);
   tu.functions = extract_functions(parsed.text, parsed);
   return tu;
+}
+
+// ── analyze_scope implementation ─────────────────────────────────────────────
+
+namespace {
+
+using TokKind = parser::TokenKind;
+using TokKW   = parser::KeywordKind;
+
+// Return true if the '{' at brace_idx opens a struct/class body.
+// Scans backward until hitting another { } ; (structural) token.
+static bool scope_is_record_body(const std::vector<parser::Token> &T, std::size_t brace_idx) {
+  for (std::size_t j = brace_idx; j-- > 0; ) {
+    const auto &tok = T[j];
+    if (tok.kind == TokKind::comment) continue;
+    if (tok.kind == TokKind::punctuation &&
+        (tok.text == "{" || tok.text == "}" || tok.text == ";"))
+      return false;
+    if (tok.kind == TokKind::keyword &&
+        (tok.keyword == TokKW::struct_kw || tok.keyword == TokKW::class_kw))
+      return true;
+  }
+  return false;
+}
+
+// Find the matching ')' for '(' at open_idx.
+static std::size_t scope_find_close_paren(const std::vector<parser::Token> &T,
+                                          std::size_t open_idx) {
+  int depth = 1;
+  for (std::size_t k = open_idx + 1; k < T.size(); ++k) {
+    if (T[k].kind == TokKind::punctuation) {
+      if (T[k].text == "(") ++depth;
+      else if (T[k].text == ")") { --depth; if (depth == 0) return k; }
+    }
+  }
+  return T.size();
+}
+
+// Check if a primitive keyword is a type keyword.
+static bool is_type_kw(TokKW kw) {
+  return kw == TokKW::int_kw || kw == TokKW::char_kw || kw == TokKW::void_kw ||
+         kw == TokKW::bool_kw || kw == TokKW::double_kw || kw == TokKW::float_kw ||
+         kw == TokKW::long_kw;
+}
+
+} // anonymous namespace
+
+ScopeAnalysis analyze_scope(const std::vector<parser::Token> &tokens,
+                            std::size_t begin, std::size_t end) {
+  if (end > tokens.size()) end = tokens.size();
+  ScopeAnalysis result;
+
+  std::size_t depth = 0;
+  std::vector<bool> scope_is_record; // one bool per depth level
+  std::size_t last_nc = std::numeric_limits<std::size_t>::max();  // last non-comment token index
+
+  for (std::size_t i = begin; i < end; ++i) {
+    const auto &tok = tokens[i];
+    if (tok.kind == TokKind::end_of_file) break;
+    if (tok.kind == TokKind::comment) continue;
+
+    // Track opening braces
+    if (tok.kind == TokKind::punctuation && tok.text == "{") {
+      const bool is_rec = scope_is_record_body(tokens, i);
+      scope_is_record.push_back(is_rec);
+      ++depth;
+      last_nc = i;
+      continue;
+    }
+
+    // Track closing braces
+    if (tok.kind == TokKind::punctuation && tok.text == "}") {
+      if (!scope_is_record.empty()) scope_is_record.pop_back();
+      if (depth > 0) --depth;
+      last_nc = i;
+      continue;
+    }
+
+    // Only attempt declaration matching at "statement start" positions:
+    // after { } ; : or at the very start (last_nc == npos).
+    // Preprocessor directives (#include etc.) also act as statement separators.
+    const bool at_stmt_start =
+        last_nc == std::numeric_limits<std::size_t>::max() ||
+        tokens[last_nc].kind == TokKind::preprocessor ||
+        (tokens[last_nc].kind == TokKind::punctuation &&
+         (tokens[last_nc].text == "{" || tokens[last_nc].text == "}" ||
+          tokens[last_nc].text == ";" || tokens[last_nc].text == ":"));
+
+    last_nc = i;
+
+    if (!at_stmt_start) continue;
+
+    // Try to match: [const] [static] [std::] type_name name [;|=|(]
+    std::size_t j = i;
+    std::string type_str;
+
+    // Optional leading const
+    if (j < end && tokens[j].kind == TokKind::keyword && tokens[j].keyword == TokKW::const_kw) {
+      type_str = "const ";
+      ++j;
+      while (j < end && tokens[j].kind == TokKind::comment) ++j;
+    }
+
+    // Optional static
+    if (j < end && tokens[j].kind == TokKind::keyword && tokens[j].keyword == TokKW::static_kw) {
+      type_str += "static ";
+      ++j;
+      while (j < end && tokens[j].kind == TokKind::comment) ++j;
+    }
+
+    // Match type name: std::ident  OR  bare ident  OR  keyword type
+    bool matched_type = false;
+    if (j + 2 < end &&
+        tokens[j].kind == TokKind::identifier && tokens[j].text == "std" &&
+        tokens[j+1].kind == TokKind::oper && tokens[j+1].text == "::" &&
+        tokens[j+2].kind == TokKind::identifier) {
+      type_str += "std::" + tokens[j+2].text;
+      j += 3;
+      matched_type = true;
+    } else if (j < end && tokens[j].kind == TokKind::identifier) {
+      type_str += tokens[j].text;
+      j += 1;
+      matched_type = true;
+    } else if (j < end && tokens[j].kind == TokKind::keyword && is_type_kw(tokens[j].keyword)) {
+      type_str += tokens[j].text;
+      j += 1;
+      matched_type = true;
+    }
+
+    if (!matched_type) continue;
+    while (j < end && tokens[j].kind == TokKind::comment) ++j;
+
+    // Skip pointer/reference decorators
+    while (j < end && tokens[j].kind == TokKind::oper &&
+           (tokens[j].text == "*" || tokens[j].text == "&")) {
+      type_str += tokens[j].text;
+      ++j;
+    }
+    while (j < end && tokens[j].kind == TokKind::comment) ++j;
+
+    // Next must be an identifier (the declared name)
+    if (j >= end || tokens[j].kind != TokKind::identifier) continue;
+    const std::string var_name = tokens[j].text;
+    ++j;
+    while (j < end && tokens[j].kind == TokKind::comment) ++j;
+
+    if (j >= end) continue;
+
+    bool is_fn = false;
+
+    if (tokens[j].kind == TokKind::punctuation && tokens[j].text == "(") {
+      // Look ahead past matching ) for [const] { to determine if function def.
+      const std::size_t cp = scope_find_close_paren(tokens, j);
+      if (cp >= end) continue;
+      std::size_t k = cp + 1;
+      while (k < end && tokens[k].kind == TokKind::comment) ++k;
+      // Optional const qualifier
+      if (k < end && tokens[k].kind == TokKind::keyword && tokens[k].keyword == TokKW::const_kw)
+        ++k;
+      while (k < end && tokens[k].kind == TokKind::comment) ++k;
+      if (k < end && tokens[k].kind == TokKind::punctuation && tokens[k].text == "{") {
+        is_fn = true;
+      } else {
+        continue; // function declaration (no body), skip
+      }
+    } else if (tokens[j].kind == TokKind::punctuation &&
+               (tokens[j].text == ";" || tokens[j].text == "=")) {
+      // Variable declaration
+    } else {
+      continue;
+    }
+
+    const bool cur_is_field = !scope_is_record.empty() && scope_is_record.back();
+
+    ScopeVar sv;
+    sv.type = type_str;
+    sv.name = var_name;
+    sv.scope_depth = depth;
+    sv.decl_begin = tok.range.begin.offset;
+    sv.is_field = cur_is_field;
+    sv.is_function = is_fn;
+    result.vars.push_back(std::move(sv));
+  }
+
+  return result;
 }
 
 } // namespace dpp::ir

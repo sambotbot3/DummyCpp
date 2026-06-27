@@ -12,7 +12,6 @@
 - Syntax checking and full validation are lower priority than producing working output.
 - Early object model: C++ objects/classes lower to plain C structs plus explicit helper functions.
 - Difficult C++ features are delayed and documented instead of blocking the project.
-- First examples should be small.
 - Generated C should be readable, but compactness is preferred when readability and compactness conflict.
 - Generated C should be compiled for full verification; run resulting binaries when feasible.
 - Primary test oracle: compare original C++ stdout + exit status against generated-C stdout + exit status.
