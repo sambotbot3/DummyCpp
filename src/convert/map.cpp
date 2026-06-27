@@ -25,6 +25,16 @@ struct RangeVar {
   std::size_t depth = 0;
 };
 
+// Structured-binding range-for: `for (auto& [k, v] : m)`.
+struct StructuredRange {
+  std::string key_name;
+  std::string val_name;
+  std::string container_name;
+  MapVar map;
+  std::string index_name;
+  std::size_t depth = 0;
+};
+
 std::string c_type(const std::string &type) {
   if (type == "std::string" || type == "string") {
     return "dpp_string";
@@ -72,6 +82,10 @@ std::string const_value_at_fn(const MapVar &var) {
 
 std::string destroy_fn(const MapVar &var) {
   return var.unordered ? "dpp_unordered_map_destroy" : "dpp_map_destroy";
+}
+
+std::string erase_fn(const MapVar &var) {
+  return var.unordered ? "dpp_unordered_map_erase" : "dpp_map_erase";
 }
 
 std::string contains_fn(const MapVar &var) {
@@ -147,6 +161,23 @@ std::string lower_map_exprs(std::string line, const std::map<std::string, MapVar
                               cfn + "(" + access + ", &(" + kst + "){$1})");
     line = std::regex_replace(line, std::regex("\\b" + name + R"(\.contains\s*\(\s*([^)]+)\s*\))"),
                               cfn + "(" + access + ", &(" + kst + "){$1})");
+    // find idiom: name.find(key) != name.end()  /  == name.end()
+    line = std::regex_replace(
+        line,
+        std::regex("\\b" + name + R"(\.find\s*\(\s*([^)]+)\s*\)\s*!=\s*)" + name +
+                   R"(\.end\s*\(\s*\))"),
+        cfn + "(" + access + ", &(" + kst + "){$1})");
+    line = std::regex_replace(
+        line,
+        std::regex("\\b" + name + R"(\.find\s*\(\s*([^)]+)\s*\)\s*==\s*)" + name +
+                   R"(\.end\s*\(\s*\))"),
+        "(!" + cfn + "(" + access + ", &(" + kst + "){$1}))");
+    // erase
+    const std::string efn = erase_fn(var);
+    line = std::regex_replace(
+        line,
+        std::regex("^(\\s*)\\b" + name + R"(\.erase\s*\(\s*([^)]+)\s*\)\s*;\s*$)"),
+        "$1" + efn + "(" + access + ", &(" + kst + "){$2});");
     line = std::regex_replace(line, std::regex("\\b" + name + R"(\s*\[\s*([^\]]+)\s*\])"),
                               value_expr(name, var, "$1"));
   }
@@ -167,6 +198,20 @@ std::string lower_map_calls(std::string line, const std::map<std::string, MapVar
           line, std::regex(R"((\b[A-Za-z_]\w*\s*\(\s*))" + name + R"(\s*(,|\)))"),
           "$1&" + name + "$2");
     }
+  }
+  return line;
+}
+
+std::string lower_structured_range_exprs(std::string line,
+                                          const std::vector<StructuredRange> &ranges) {
+  for (const StructuredRange &r : ranges) {
+    // Replace key_name → key accessor, val_name → value accessor.
+    line = std::regex_replace(
+        line, std::regex("\\b" + r.key_name + "\\b"),
+        key_entry_expr(r.container_name, r.map, r.index_name));
+    line = std::regex_replace(
+        line, std::regex("\\b" + r.val_name + "\\b"),
+        value_entry_expr(r.container_name, r.map, r.index_name));
   }
   return line;
 }
@@ -288,6 +333,7 @@ MapResult lower_maps(const std::string &source) {
   std::map<std::string, MapVar> aliases;
   std::map<std::string, MapVar> maps;
   std::vector<RangeVar> ranges;
+  std::vector<StructuredRange> structured_ranges;
   std::vector<std::string> out;
   std::size_t brace_depth = 0;
 
@@ -299,10 +345,15 @@ MapResult lower_maps(const std::string &source) {
     if (before == 1 && brace_depth == 0) {
       maps.clear();
       ranges.clear();
+      structured_ranges.clear();
     }
     ranges.erase(std::remove_if(ranges.begin(), ranges.end(),
                                 [&](const RangeVar &range) { return range.depth > brace_depth; }),
                  ranges.end());
+    structured_ranges.erase(
+        std::remove_if(structured_ranges.begin(), structured_ranges.end(),
+                       [&](const StructuredRange &r) { return r.depth > brace_depth; }),
+        structured_ranges.end());
   };
 
   for (const std::string &line : split_lines(source)) {
@@ -362,25 +413,49 @@ MapResult lower_maps(const std::string &source) {
       }
     }
 
+    // Structured-binding range-for: `for (auto& [k, v] : m) {`
+    static const std::regex range_for_struct_re(
+        R"(^(\s*)for\s*\(\s*(?:const\s+)?auto\s*&?\s*\[\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*\]\s*:\s*([A-Za-z_]\w*)\s*\)\s*(\{)?\s*$)");
+    if (std::regex_match(line, match, range_for_struct_re)) {
+      const std::string container = match[4].str();
+      const auto map = maps.find(container);
+      if (map != maps.end()) {
+        result.used_map = true;
+        const std::string kname = match[2].str();
+        const std::string vname = match[3].str();
+        const std::string index = "dpp_map_index_" + kname;
+        const std::string brace = match[5].matched ? " {" : "";
+        structured_ranges.push_back({kname, vname, container, map->second, index, brace_depth + 1});
+        out.push_back(match[1].str() + "for (size_t " + index + " = 0; " + index + " < " +
+                      size_fn(map->second) + "(" + map_access(container, map->second) + "); ++" +
+                      index + ")" + brace);
+        update_scope(line);
+        continue;
+      }
+    }
+
     static const std::regex range_for_re(
-        R"(^(\s*)for\s*\(\s*const\s+auto\s*&\s*([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)\s*\)\s*\{\s*$)");
+        R"(^(\s*)for\s*\(\s*(?:const\s+)?auto\s*&?\s*([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)\s*\)\s*(\{)?\s*$)");
     if (std::regex_match(line, match, range_for_re)) {
       const std::string container = match[3].str();
       const auto map = maps.find(container);
       if (map != maps.end()) {
         result.used_map = true;
         const std::string index = "dpp_map_index_" + match[2].str();
+        const std::string brace = match[4].matched ? " {" : "";
         ranges.push_back({match[2].str(), container, map->second, index, brace_depth + 1});
         out.push_back(match[1].str() + "for (size_t " + index + " = 0; " + index + " < " +
                       size_fn(map->second) + "(" + map_access(container, map->second) + "); ++" +
-                      index + ") {");
+                      index + ")" + brace);
         update_scope(line);
         continue;
       }
     }
 
     const std::string lowered =
-        lower_map_calls(lower_map_exprs(lower_range_entry_exprs(line, ranges), maps), maps);
+        lower_map_calls(lower_map_exprs(
+            lower_structured_range_exprs(lower_range_entry_exprs(line, ranges), structured_ranges),
+            maps), maps);
     const std::string lowered_stripped = trim(lowered);
     if (!maps.empty() && lowered_stripped.rfind("return ", 0) == 0) {
       const std::string indent = leading_indent(lowered);

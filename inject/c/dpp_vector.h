@@ -20,3 +20,5 @@ void *dpp_vector_at(dpp_vector *vector, size_t index);
 const void *dpp_vector_const_at(const dpp_vector *vector, size_t index);
 void dpp_vector_push_back(dpp_vector *vector, const void *elem);
 void dpp_vector_pop_back(dpp_vector *vector);
+void dpp_vector_erase_at(dpp_vector *vector, size_t index);
+void dpp_vector_insert_at(dpp_vector *vector, size_t index, const void *elem);

@@ -173,6 +173,48 @@ std::string lower_const_ref_params_in_line(const std::string &line) {
   return line.substr(0, paren_open + 1) + new_params + line.substr(paren_close);
 }
 
+// Infer C type of a single call argument (literal or known variable).
+static std::string infer_arg_type(const std::string &arg,
+                                   const std::map<std::string, std::string> &var_types) {
+  const std::string a = trim(arg);
+  if (a.empty()) return "";
+  if (a.front() == '"') return "const char *";
+  if (a.front() == '\'') return "char";
+  if (a == "true" || a == "false") return "int";
+  bool has_dot = false, has_e = false, all_num = true;
+  const std::size_t start = (a[0] == '-' || a[0] == '+') ? 1 : 0;
+  for (std::size_t k = start; k < a.size(); ++k) {
+    const char c = a[k];
+    if (c == '.') has_dot = true;
+    else if (c == 'e' || c == 'E') has_e = true;
+    else if (c != 'f' && c != 'F' && c != 'l' && c != 'L' && c != 'u' && c != 'U' &&
+             !std::isdigit(static_cast<unsigned char>(c))) all_num = false;
+  }
+  if (all_num && start < a.size()) return (has_dot || has_e) ? "double" : "int";
+  const auto it = var_types.find(a);
+  if (it != var_types.end()) return it->second;
+  return "";
+}
+
+// Check whether inferred arg type is compatible with a declared param type.
+static bool types_compatible(const std::string &arg_t, const std::string &param_t) {
+  if (arg_t == param_t) return true;
+  if (arg_t == "int" && (param_t == "long" || param_t == "unsigned int" || param_t == "double"))
+    return true;
+  if (arg_t == "double" && (param_t == "float")) return true;
+  return false;
+}
+
+// Extract normalized list of param types from a raw param string.
+static std::vector<std::string> extract_param_types(const std::string &params_raw) {
+  std::vector<std::string> result;
+  for (const std::string &p : split_commas(params_raw)) {
+    const std::string t = param_type(p);
+    if (!t.empty()) result.push_back(t);
+  }
+  return result;
+}
+
 // Replace word-boundary occurrences of `orig` immediately followed by '(' with `mangled`.
 std::string rename_calls(const std::string &source, const std::string &orig,
                          const std::string &mangled) {
@@ -183,9 +225,7 @@ std::string rename_calls(const std::string &source, const std::string &orig,
   while (i < source.size()) {
     if (i + n <= source.size() && source.compare(i, n, orig) == 0) {
       const bool left_ok = (i == 0) || !is_ident_char(source[i - 1]);
-      std::size_t j = i + n;
-      while (j < source.size() && (source[j] == ' ' || source[j] == '\t')) ++j;
-      const bool right_ok = j < source.size() && source[j] == '(';
+      const bool right_ok = (i + n >= source.size()) || !is_ident_char(source[i + n]);
       if (left_ok && right_ok) {
         out += mangled;
         i += n;
@@ -207,6 +247,10 @@ FreeFunctionResult lower_free_functions(const std::string &source) {
     std::string name;
     std::string ret;
     std::string params_raw;
+    std::string sig;                        // build_signature output
+    std::string mangled;                    // mangled name
+    std::vector<std::string> param_types;   // per-param types
+    int arity = 0;
   };
   std::vector<FuncDef> defs;
 
@@ -215,28 +259,149 @@ FreeFunctionResult lower_free_functions(const std::string &source) {
     std::string name, ret, params;
     if (!parse_func_sig(line, ret, name, params)) continue;
     if (name == "main") continue;
-    defs.push_back({name, ret, params});
+    FuncDef d;
+    d.name = name;
+    d.ret = ret;
+    d.params_raw = params;
+    d.sig = build_signature(ret, params);
+    d.param_types = extract_param_types(params);
+    d.arity = static_cast<int>(d.param_types.size());
+    d.mangled = name + "_" + fnv1a_32_hex(d.sig);
+    defs.push_back(d);
   }
 
-  // Group signatures by name to detect overloads.
-  // A declaration + definition pair has the same signature → single unique signature.
-  std::map<std::string, std::set<std::string>> name_sigs;
-  for (const FuncDef &d : defs)
-    name_sigs[d.name].insert(build_signature(d.ret, d.params_raw));
-
-  // Build rename map: only mangle names with exactly one unique signature.
-  // Overloaded names (multiple signatures) are deferred until IR enables type-aware
-  // call-site resolution. (TODO)
-  std::map<std::string, std::string> rename_map;
-  for (const auto &[name, sigs] : name_sigs) {
-    if (sigs.size() != 1) continue;
-    const std::string &sig = *sigs.begin();
-    rename_map[name] = name + "_" + fnv1a_32_hex(sig);
+  // Group signatures by name; deduplicate (decl + def count as one).
+  std::map<std::string, std::vector<FuncDef>> name_to_defs;
+  {
+    std::map<std::string, std::set<std::string>> seen; // name → set of sigs already added
+    for (const FuncDef &d : defs) {
+      if (seen[d.name].insert(d.sig).second)
+        name_to_defs[d.name].push_back(d);
+    }
   }
 
+  // Build simple rename map (non-overloaded) and overload table.
+  std::map<std::string, std::string> rename_map;  // orig → single mangled
+  struct OverloadSet {
+    std::vector<FuncDef> variants;  // unique signatures, sorted by arity
+  };
+  std::map<std::string, OverloadSet> overload_map;
+
+  for (const auto &[name, variants] : name_to_defs) {
+    if (variants.size() == 1) {
+      rename_map[name] = variants[0].mangled;
+    } else {
+      overload_map[name].variants = variants;
+      // Also register each variant's definition mangled name so the definition itself is renamed.
+      for (const FuncDef &v : variants)
+        rename_map[v.mangled + "__overload_decl__" + v.sig] = v.mangled; // placeholder, handled below
+    }
+  }
+
+  // Pass 1: rename non-overloaded calls and definitions.
   std::string out = source;
-  for (const auto &[orig, mangled] : rename_map)
+  for (const auto &[orig, mangled] : rename_map) {
+    if (orig.find("__overload_decl__") != std::string::npos) continue;
     out = rename_calls(out, orig, mangled);
+  }
+
+  // Pass 2: rewrite overloaded function definitions by signature-matching each line.
+  // At each function signature line, determine which overload it is and rename it.
+  // At call sites, count args and infer types to pick the right overload.
+  if (!overload_map.empty()) {
+    // Pre-scan for known variable types (for type inference at call sites).
+    std::map<std::string, std::string> var_types;
+    {
+      static const std::regex vt_re(
+          R"(^\s*(?:const\s+)?(int|double|float|long|char|unsigned(?:\s+int)?|size_t)\s+([A-Za-z_]\w*)\s*[=;])");
+      for (const std::string &ln : split_lines(out)) {
+        std::smatch vm;
+        if (std::regex_search(ln, vm, vt_re)) var_types[vm[2].str()] = vm[1].str();
+      }
+    }
+
+    std::vector<std::string> lines2 = split_lines(out);
+    for (std::string &line : lines2) {
+      // Rename overloaded function definitions/declarations.
+      if (!is_skipped_line(line)) {
+        std::string def_name, def_ret, def_params;
+        if (parse_func_sig(line, def_ret, def_name, def_params)) {
+          const auto oit = overload_map.find(def_name);
+          if (oit != overload_map.end()) {
+            const std::string def_sig = build_signature(def_ret, def_params);
+            for (const FuncDef &v : oit->second.variants) {
+              if (v.sig == def_sig) {
+                line = rename_calls(line, def_name, v.mangled);
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Rename overloaded call sites by resolving argument types.
+      for (const auto &[name, oset] : overload_map) {
+        // Scan for call sites: name followed by (
+        std::string result2;
+        std::size_t pos = 0;
+        while (pos < line.size()) {
+          const std::size_t found = line.find(name, pos);
+          if (found == std::string::npos) { result2 += line.substr(pos); break; }
+          // Check word boundaries.
+          const bool left_ok = (found == 0) || !is_ident_char(line[found - 1]);
+          const bool right_ok_end = found + name.size() < line.size();
+          if (!left_ok || !right_ok_end || is_ident_char(line[found + name.size()])) {
+            result2 += line[pos];
+            ++pos;
+            continue;
+          }
+          // Check for '(' after optional spaces.
+          std::size_t j = found + name.size();
+          while (j < line.size() && line[j] == ' ') ++j;
+          if (j >= line.size() || line[j] != '(') {
+            result2 += line.substr(pos, found - pos + name.size());
+            pos = found + name.size();
+            continue;
+          }
+          // Find matching close paren.
+          const std::size_t open = j;
+          int depth = 0;
+          std::size_t close = open;
+          for (std::size_t k = open; k < line.size(); ++k) {
+            if (line[k] == '(') ++depth;
+            else if (line[k] == ')') { --depth; if (depth == 0) { close = k; break; } }
+          }
+          const std::string args_str = line.substr(open + 1, close - open - 1);
+          const bool args_empty = trim(args_str).empty();
+          const auto arg_list = args_empty ? std::vector<std::string>{} : split_commas(args_str);
+          const int nargs = static_cast<int>(arg_list.size());
+
+          // Find best matching overload.
+          const FuncDef *best = nullptr;
+          int best_score = -1;
+          for (const FuncDef &v : oset.variants) {
+            if (v.arity != nargs) continue;
+            int score = 0;
+            for (int ai = 0; ai < nargs; ++ai) {
+              const std::string at = infer_arg_type(arg_list[ai], var_types);
+              const std::string pt = (ai < (int)v.param_types.size()) ? v.param_types[ai] : "";
+              if (!at.empty() && !pt.empty()) {
+                if (at == pt) score += 2;
+                else if (types_compatible(at, pt)) score += 1;
+              }
+            }
+            if (score > best_score) { best_score = score; best = &v; }
+          }
+          result2 += line.substr(pos, found - pos);
+          result2 += (best ? best->mangled : name);
+          result2 += line.substr(j, close - j + 1);
+          pos = close + 1;
+        }
+        line = result2;
+      }
+    }
+    out = join_lines(lines2);
+  }
 
   // Rewrite const-ref params in function signatures.
   std::vector<std::string> lines = split_lines(out);
@@ -247,7 +412,7 @@ FreeFunctionResult lower_free_functions(const std::string &source) {
       any_ref = true;
     }
   }
-  if (!rename_map.empty() || any_ref) {
+  if (!rename_map.empty() || !overload_map.empty() || any_ref) {
     result.source = join_lines(lines);
   } else {
     result.source = source;

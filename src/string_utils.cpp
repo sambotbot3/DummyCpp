@@ -1,5 +1,6 @@
 #include "dpp/string_utils.h"
 
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <sstream>
@@ -85,6 +86,13 @@ std::vector<std::string> split_commas(const std::string &value) {
 
 bool starts_with(const std::string &value, const std::string &prefix) {
   return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
+}
+
+bool is_loop_kw(const std::string &line, const std::string &kw) {
+  if (line.size() < kw.size() || line.compare(0, kw.size(), kw) != 0) return false;
+  if (line.size() == kw.size()) return true;
+  const char next = line[kw.size()];
+  return !std::isalnum(static_cast<unsigned char>(next)) && next != '_';
 }
 
 std::string fnv1a_32_hex(const std::string &s) {

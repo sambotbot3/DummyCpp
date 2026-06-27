@@ -20,6 +20,7 @@ bool is_supported_include(const std::string &include) {
       "#include <cstddef>",     "#include <cstdlib>",
       "#include <cstring>",     "#include <cmath>",
       "#include <climits>",     "#include <utility>",
+      "#include <optional>",
       "#include <type_traits>", "#include <functional>",
       "#include <numeric>",     "#include <stdexcept>",
       nullptr};

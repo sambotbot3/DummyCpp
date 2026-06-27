@@ -173,13 +173,37 @@ void *dpp_map_get_or_insert(dpp_map *map, const void *key) {
   return entries[pos].value;
 }
 
-int dpp_map_contains(const dpp_map *map, const void *key) {
+const void *dpp_map_find(const dpp_map *map, const void *key) {
   const dpp_map_entry *entries = (const dpp_map_entry *)map->entries;
   size_t lo = 0, hi = map->size;
   while (lo < hi) {
     const size_t mid = lo + (hi - lo) / 2;
     const int cmp = map->compare(entries[mid].key, key);
-    if (cmp == 0) return 1;
+    if (cmp == 0) return entries[mid].value;
+    if (cmp < 0) lo = mid + 1;
+    else hi = mid;
+  }
+  return NULL;
+}
+
+int dpp_map_contains(const dpp_map *map, const void *key) {
+  return dpp_map_find(map, key) != NULL;
+}
+
+int dpp_map_erase(dpp_map *map, const void *key) {
+  dpp_map_entry *entries = dpp_map_entries(map);
+  size_t lo = 0, hi = map->size;
+  while (lo < hi) {
+    const size_t mid = lo + (hi - lo) / 2;
+    const int cmp = map->compare(entries[mid].key, key);
+    if (cmp == 0) {
+      free(entries[mid].key);
+      free(entries[mid].value);
+      memmove(&entries[mid], &entries[mid + 1],
+              (map->size - mid - 1) * sizeof(dpp_map_entry));
+      map->size -= 1;
+      return 1;
+    }
     if (cmp < 0) lo = mid + 1;
     else hi = mid;
   }
@@ -256,6 +280,42 @@ void *dpp_unordered_map_get_or_insert(dpp_unordered_map *map, const void *key) {
   return entries[slot].value;
 }
 
+int dpp_unordered_map_erase(dpp_unordered_map *map, const void *key) {
+  if (map->capacity == 0) return 0;
+  dpp_unordered_map_entry *entries = dpp_unordered_map_entries(map);
+  size_t slot = map->hash(key) % map->capacity;
+  while (entries[slot].occupied) {
+    if (map->equal(entries[slot].key, key)) {
+      free(entries[slot].key);
+      free(entries[slot].value);
+      entries[slot].occupied = 0;
+      entries[slot].key = NULL;
+      entries[slot].value = NULL;
+      map->size -= 1;
+      /* Re-insert subsequent cluster to maintain linear-probe invariant */
+      size_t next = (slot + 1) % map->capacity;
+      while (entries[next].occupied) {
+        unsigned char *k = entries[next].key;
+        unsigned char *v = entries[next].value;
+        entries[next].occupied = 0;
+        entries[next].key = NULL;
+        entries[next].value = NULL;
+        map->size -= 1;
+        size_t new_slot = map->hash(k) % map->capacity;
+        while (entries[new_slot].occupied) new_slot = (new_slot + 1) % map->capacity;
+        entries[new_slot].key = k;
+        entries[new_slot].value = v;
+        entries[new_slot].occupied = 1;
+        map->size += 1;
+        next = (next + 1) % map->capacity;
+      }
+      return 1;
+    }
+    slot = (slot + 1) % map->capacity;
+  }
+  return 0;
+}
+
 static size_t dpp_unordered_map_slot_at(const dpp_unordered_map *map, size_t index) {
   const dpp_unordered_map_entry *entries = (const dpp_unordered_map_entry *)map->entries;
   size_t seen = 0;
@@ -271,15 +331,19 @@ static size_t dpp_unordered_map_slot_at(const dpp_unordered_map *map, size_t ind
   return map->capacity;
 }
 
-int dpp_unordered_map_contains(const dpp_unordered_map *map, const void *key) {
-  if (map->capacity == 0) return 0;
+const void *dpp_unordered_map_find(const dpp_unordered_map *map, const void *key) {
+  if (map->capacity == 0) return NULL;
   const dpp_unordered_map_entry *entries = (const dpp_unordered_map_entry *)map->entries;
   size_t slot = map->hash(key) % map->capacity;
   while (entries[slot].occupied) {
-    if (map->equal(entries[slot].key, key)) return 1;
+    if (map->equal(entries[slot].key, key)) return entries[slot].value;
     slot = (slot + 1) % map->capacity;
   }
-  return 0;
+  return NULL;
+}
+
+int dpp_unordered_map_contains(const dpp_unordered_map *map, const void *key) {
+  return dpp_unordered_map_find(map, key) != NULL;
 }
 
 const void *dpp_unordered_map_key_at(const dpp_unordered_map *map, size_t index) {

@@ -71,6 +71,74 @@ static inline int dpp_algorithm_compare_char_ptr(const void *left, const void *r
     }                                                                                            \
   } while (0)
 
+static inline int dpp_find_int(const dpp_vector *v, int value) {
+  const int *data = (const int *)v->data;
+  for (size_t i = 0; i < v->size; ++i) if (data[i] == value) return 1;
+  return 0;
+}
+
+static inline int dpp_find_double(const dpp_vector *v, double value) {
+  const double *data = (const double *)v->data;
+  for (size_t i = 0; i < v->size; ++i) if (data[i] == value) return 1;
+  return 0;
+}
+
+static inline int dpp_count_int(const dpp_vector *v, int value) {
+  int count = 0;
+  const int *data = (const int *)v->data;
+  for (size_t i = 0; i < v->size; ++i) if (data[i] == value) ++count;
+  return count;
+}
+
+static inline int dpp_count_double(const dpp_vector *v, double value) {
+  int count = 0;
+  const double *data = (const double *)v->data;
+  for (size_t i = 0; i < v->size; ++i) if (data[i] == value) ++count;
+  return count;
+}
+
+static inline int dpp_accumulate_int(const dpp_vector *v, int init) {
+  int acc = init;
+  const int *data = (const int *)v->data;
+  for (size_t i = 0; i < v->size; ++i) acc += data[i];
+  return acc;
+}
+
+static inline double dpp_accumulate_double(const dpp_vector *v, double init) {
+  double acc = init;
+  const double *data = (const double *)v->data;
+  for (size_t i = 0; i < v->size; ++i) acc += data[i];
+  return acc;
+}
+
+static inline int dpp_min_element_int(const dpp_vector *v) {
+  const int *data = (const int *)v->data;
+  int m = data[0];
+  for (size_t i = 1; i < v->size; ++i) if (data[i] < m) m = data[i];
+  return m;
+}
+
+static inline double dpp_min_element_double(const dpp_vector *v) {
+  const double *data = (const double *)v->data;
+  double m = data[0];
+  for (size_t i = 1; i < v->size; ++i) if (data[i] < m) m = data[i];
+  return m;
+}
+
+static inline int dpp_max_element_int(const dpp_vector *v) {
+  const int *data = (const int *)v->data;
+  int m = data[0];
+  for (size_t i = 1; i < v->size; ++i) if (data[i] > m) m = data[i];
+  return m;
+}
+
+static inline double dpp_max_element_double(const dpp_vector *v) {
+  const double *data = (const double *)v->data;
+  double m = data[0];
+  for (size_t i = 1; i < v->size; ++i) if (data[i] > m) m = data[i];
+  return m;
+}
+
 #define DPP_FILL_VECTOR(vector_ptr, type, value)                                                 \
   do {                                                                                           \
     dpp_vector *dpp_fill_vector = (vector_ptr);                                                   \

@@ -53,6 +53,8 @@ Options parse_args(int argc, char **argv) {
       opts.include_dirs.push_back(argv[++i]);
     } else if (arg.size() > 2 && arg[0] == '-' && arg[1] == 'I') {
       opts.include_dirs.push_back(arg.substr(2));
+    } else if (arg.size() > 5 && arg.substr(0, 5) == "-std=") {
+      // silently ignore compiler dialect flags
     } else if (opts.input_path.empty()) {
       opts.input_path = arg;
     } else {

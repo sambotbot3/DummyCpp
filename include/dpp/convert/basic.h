@@ -4,6 +4,9 @@
 
 namespace dpp::convert {
 
+std::string lower_default_args(const std::string &source);
+std::string lower_pairs(const std::string &source);
+std::string lower_optionals(const std::string &source);
 std::string lower_enums(const std::string &source);
 std::string lower_auto_types(const std::string &source);
 std::string lower_structs(const std::string &source);

@@ -35,9 +35,14 @@ std::string transpile_bootstrap_subset(const std::string &source) {
   }
 
   std::string out = convert::lower_function_templates(parsed).source;
+  out = convert::lower_default_args(out);
+  out = convert::lower_pairs(out);
+  out = convert::lower_optionals(out);
   out = convert::lower_enums(out);
   out = convert::lower_auto_types(out);
-  out = convert::lower_records(out).source;
+  const convert::RecordsResult records_result = convert::lower_records(out);
+  out = records_result.source;
+  out = convert::lower_record_lifetime(out, records_result.destructible_types);
   out = convert::lower_free_functions(out).source;
   convert::VectorResult vector = convert::lower_vectors(out);
   out = vector.source;
@@ -58,7 +63,7 @@ std::string transpile_bootstrap_subset(const std::string &source) {
   out = convert::lower_aggregate_initializers(out);
   out = convert::lower_cpp_surface_types(out);
 
-  const std::string includes = iostream.used_stdio ? "#include <stdio.h>\n\n" : "";
+  const std::string includes = iostream.used_stdio ? "#include <stdio.h>\n#include <stdlib.h>\n\n" : "";
   const std::string bool_include =
       std::regex_search(out, std::regex(R"(\bbool\b)")) ? "#include <stdbool.h>\n" : "";
   const std::string assert_include = assertions.used_assert ? "#include <assert.h>\n" : "";

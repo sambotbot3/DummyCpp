@@ -100,13 +100,6 @@ std::vector<std::string> peek_cleanup_lines(const std::string &indent,
   return cleanup_lines(indent, closing);
 }
 
-bool is_loop_kw(const std::string &s, const std::string &kw) {
-  if (s.size() < kw.size() || s.compare(0, kw.size(), kw) != 0) return false;
-  if (s.size() == kw.size()) return true;
-  const char next = s[kw.size()];
-  return !std::isalnum(static_cast<unsigned char>(next)) && next != '_';
-}
-
 std::string lower_smart_exprs(std::string line, const std::map<std::string, SmartVar> &vars) {
   for (const auto &entry : vars) {
     const std::string &name = entry.first;
@@ -198,6 +191,40 @@ MemoryResult lower_memory(const std::string &source) {
       const std::string name = match[4].str();
       remember_var(vars, name, {type, kind == "shared"}, before_depth);
       for (const std::string &lowered : lower_heap_init(indent, kind, type, name, match[5].str())) {
+        out.push_back(lowered);
+      }
+      update_depth_and_pop(line);
+      continue;
+    }
+
+    // auto name = std::make_unique<T>(args) / std::make_shared<T>(args)
+    static const std::regex auto_make_smart_re(
+        R"(^(\s*)auto\s+([A-Za-z_]\w*)\s*=\s*(?:std::)?make_(unique|shared)\s*<\s*([A-Za-z_]\w*)\s*>\s*\(([^)]*)\)\s*;\s*$)");
+    if (std::regex_match(line, match, auto_make_smart_re)) {
+      result.used_memory = true;
+      const std::string indent = match[1].str();
+      const std::string name = match[2].str();
+      const std::string kind = match[3].str();
+      const std::string type = match[4].str();
+      remember_var(vars, name, {type, kind == "shared"}, before_depth);
+      for (const std::string &lowered : lower_heap_init(indent, kind, type, name, match[5].str())) {
+        out.push_back(lowered);
+      }
+      update_depth_and_pop(line);
+      continue;
+    }
+
+    // make_shared<T>(args) / make_unique<T>(args) form
+    static const std::regex make_smart_re(
+        R"(^(\s*)(?:std::)?(unique|shared)_ptr\s*<\s*([A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*=\s*(?:std::)?make_(unique|shared)\s*<\s*\3\s*>\s*\(([^)]*)\)\s*;\s*$)");
+    if (std::regex_match(line, match, make_smart_re)) {
+      result.used_memory = true;
+      const std::string indent = match[1].str();
+      const std::string kind = match[2].str();
+      const std::string type = match[3].str();
+      const std::string name = match[4].str();
+      remember_var(vars, name, {type, kind == "shared"}, before_depth);
+      for (const std::string &lowered : lower_heap_init(indent, kind, type, name, match[6].str())) {
         out.push_back(lowered);
       }
       update_depth_and_pop(line);

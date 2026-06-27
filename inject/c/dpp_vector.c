@@ -99,3 +99,34 @@ void dpp_vector_pop_back(dpp_vector *vector) {
   }
   vector->size -= 1;
 }
+
+void dpp_vector_erase_at(dpp_vector *vector, size_t index) {
+  if (index >= vector->size) {
+    dpp_vector_abort_bounds();
+  }
+  const size_t tail = vector->size - index - 1;
+  if (tail > 0) {
+    memmove((char *)vector->data + index * vector->elem_size,
+            (char *)vector->data + (index + 1) * vector->elem_size,
+            tail * vector->elem_size);
+  }
+  vector->size -= 1;
+}
+
+void dpp_vector_insert_at(dpp_vector *vector, size_t index, const void *elem) {
+  if (index > vector->size) {
+    dpp_vector_abort_bounds();
+  }
+  if (vector->size == vector->capacity) {
+    const size_t next_capacity = vector->capacity == 0 ? 4 : vector->capacity * 2;
+    dpp_vector_reserve(vector, next_capacity);
+  }
+  const size_t tail = vector->size - index;
+  if (tail > 0) {
+    memmove((char *)vector->data + (index + 1) * vector->elem_size,
+            (char *)vector->data + index * vector->elem_size,
+            tail * vector->elem_size);
+  }
+  memcpy((char *)vector->data + index * vector->elem_size, elem, vector->elem_size);
+  vector->size += 1;
+}

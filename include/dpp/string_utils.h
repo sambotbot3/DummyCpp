@@ -13,6 +13,7 @@ std::string leading_indent(const std::string &line);
 std::size_t count_char(const std::string &line, char ch);
 std::vector<std::string> split_commas(const std::string &value);
 bool starts_with(const std::string &value, const std::string &prefix);
+bool is_loop_kw(const std::string &line, const std::string &kw);
 
 // FNV-1a 32-bit hash of s, rendered as 8 lowercase hex digits.
 std::string fnv1a_32_hex(const std::string &s);

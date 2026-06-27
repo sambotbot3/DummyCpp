@@ -23,13 +23,25 @@ struct RangeVector {
   std::string elem_type;
   std::string index_name;
   std::size_t depth = 0;
+  bool is_value_copy = false; // true for primitives — item is a value, not a pointer
 };
 
+static std::string normalize_elem_type(const std::string &t) {
+  if (t == "string" || t == "std::string") return "dpp_string";
+  return t;
+}
+
+static bool is_primitive_elem_type(const std::string &t) {
+  return t == "int" || t == "double" || t == "float" || t == "long" ||
+         t == "unsigned" || t == "char" || t == "bool" || t == "size_t" ||
+         t == "int8_t" || t == "int16_t" || t == "int32_t" || t == "int64_t" ||
+         t == "uint8_t" || t == "uint16_t" || t == "uint32_t" || t == "uint64_t";
+}
+
+static bool is_string_elem_type(const std::string &t) { return t == "dpp_string"; }
+
 std::string c_type_for_vector_elem(const std::string &elem_type) {
-  if (elem_type == "int") {
-    return "int";
-  }
-  return elem_type;
+  return elem_type; // already normalized
 }
 
 std::string lower_push_value(const std::string &expr, const std::string &c_type) {
@@ -63,8 +75,14 @@ std::string lower_vector_exprs(std::string line, const std::map<std::string, std
         c_type + "_$2((" + c_type + " *)dpp_vector_at(&" + name + ", $1), $3)");
     line = std::regex_replace(line, std::regex("\\b" + name + R"(\.size\s*\(\s*\))"),
                               "dpp_vector_size(&" + name + ")");
-    line = std::regex_replace(line, std::regex("\\b" + name + R"(\s*\[\s*([^\]]+)\s*\])"),
-                              "(*(" + c_type + " *)dpp_vector_at(&" + name + ", $1))");
+    if (is_string_elem_type(c_type)) {
+      line = std::regex_replace(
+          line, std::regex("\\b" + name + R"(\s*\[\s*([^\]]+)\s*\])"),
+          "dpp_string_c_str((dpp_string *)dpp_vector_at(&" + name + ", $1))");
+    } else {
+      line = std::regex_replace(line, std::regex("\\b" + name + R"(\s*\[\s*([^\]]+)\s*\])"),
+                                "(*(" + c_type + " *)dpp_vector_at(&" + name + ", $1))");
+    }
   }
   return line;
 }
@@ -81,7 +99,11 @@ std::vector<std::string> destroy_lines(const std::string &indent,
                                        const std::vector<ScopedVector> &vectors) {
   std::vector<std::string> lines;
   for (auto it = vectors.rbegin(); it != vectors.rend(); ++it) {
-    lines.push_back(indent + "dpp_vector_destroy(&" + it->name + ");");
+    if (is_string_elem_type(it->elem_type)) {
+      lines.push_back(indent + "dpp_vector_destroy_strings(&" + it->name + ");");
+    } else {
+      lines.push_back(indent + "dpp_vector_destroy(&" + it->name + ");");
+    }
   }
   return lines;
 }
@@ -106,8 +128,32 @@ std::vector<std::string> close_scope_lines(const std::string &indent,
 
 std::string lower_vector_range_exprs(std::string line, const std::vector<RangeVector> &ranges) {
   for (const RangeVector &range : ranges) {
-    line = std::regex_replace(line, std::regex("\\b" + range.item_name + R"(\.)"),
-                              range.item_name + "->");
+    if (!range.is_value_copy) {
+      line = std::regex_replace(line, std::regex("\\b" + range.item_name + R"(\.)"),
+                                range.item_name + "->");
+      // Dispatch ptr->method(args) → ElemType_method(ptr, args) for struct element types.
+      if (!is_string_elem_type(range.elem_type)) {
+        const std::regex method_re("\\b" + range.item_name +
+                                   R"(->([A-Za-z_]\w*)\(\s*((?:[^)(]|\([^)]*\))*)\s*\))");
+        std::string out;
+        std::size_t last = 0;
+        for (std::sregex_iterator it(line.begin(), line.end(), method_re), end;
+             it != end; ++it) {
+          out += line.substr(last, static_cast<std::size_t>((*it).position()) - last);
+          const std::string method_name = (*it)[1].str();
+          const std::string args = trim((*it)[2].str());
+          out += range.elem_type + "_" + method_name + "(" + range.item_name;
+          if (!args.empty()) out += ", " + args;
+          out += ")";
+          last = static_cast<std::size_t>((*it).position()) +
+                 static_cast<std::size_t>((*it).length());
+        }
+        if (!out.empty()) {
+          out += line.substr(last);
+          line = out;
+        }
+      }
+    }
   }
   return line;
 }
@@ -141,10 +187,11 @@ VectorResult lower_vectors(const std::string &source) {
 
     std::smatch match;
     static const std::regex vector_copy_decl_re(
-        R"(^(\s*)const\s+(?:std::)?vector\s*<\s*([A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*=\s*(.+)\s*;\s*$)");
+        R"(^(\s*)const\s+(?:std::)?vector\s*<\s*((?:std::)?[A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*=\s*(.+)\s*;\s*$)");
     if (std::regex_match(line, match, vector_copy_decl_re)) {
       result.used_vector = true;
-      vectors.push_back({match[3].str(), match[2].str(), before_depth});
+      const std::string elem_type = normalize_elem_type(match[2].str());
+      vectors.push_back({match[3].str(), elem_type, before_depth});
       out.push_back(match[1].str() + "std::vector<" + match[2].str() + "> " + match[3].str() +
                     " = " + match[4].str() + ";");
       scope_depth_after(line);
@@ -152,11 +199,11 @@ VectorResult lower_vectors(const std::string &source) {
     }
 
     static const std::regex vector_decl_re(
-        R"(^(\s*)(?:std::)?vector\s*<\s*([A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*;\s*$)");
+        R"(^(\s*)(?:std::)?vector\s*<\s*((?:std::)?[A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*;\s*$)");
     if (std::regex_match(line, match, vector_decl_re)) {
       result.used_vector = true;
       const std::string indent = match[1].str();
-      const std::string elem_type = match[2].str();
+      const std::string elem_type = normalize_elem_type(match[2].str());
       const std::string name = match[3].str();
       vectors.push_back({name, elem_type, before_depth});
       out.push_back(indent + "dpp_vector " + name + ";");
@@ -167,48 +214,105 @@ VectorResult lower_vectors(const std::string &source) {
     }
 
     static const std::regex vector_init_re(
-        R"(^(\s*)(?:std::)?vector\s*<\s*([A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*(?:=)?\s*\{(.*)\}\s*;\s*$)");
+        R"(^(\s*)(?:std::)?vector\s*<\s*((?:std::)?[A-Za-z_]\w*)\s*>\s+([A-Za-z_]\w*)\s*(?:=)?\s*\{(.*)\}\s*;\s*$)");
     if (std::regex_match(line, match, vector_init_re)) {
       result.used_vector = true;
       const std::string indent = match[1].str();
-      const std::string elem_type = match[2].str();
+      const std::string elem_type = normalize_elem_type(match[2].str());
       const std::string c_type = c_type_for_vector_elem(elem_type);
       const std::string name = match[3].str();
       vectors.push_back({name, elem_type, before_depth});
       out.push_back(indent + "dpp_vector " + name + ";");
       out.push_back(indent + "dpp_vector_init(&" + name + ", sizeof(" + c_type + "));");
       for (const std::string &value : split_commas(match[4].str())) {
-        out.push_back(indent + "dpp_vector_push_back(&" + name + ", &" +
-                      lower_push_value(value, c_type) + ");");
+        if (is_string_elem_type(elem_type)) {
+          const std::string v = trim(value);
+          if (!v.empty() && v.front() == '"') {
+            out.push_back(indent + "dpp_string_vector_push_cstr(&" + name + ", " + v + ");");
+          } else {
+            out.push_back(indent + "dpp_string_vector_push(&" + name + ", &" + v + ");");
+          }
+        } else {
+          out.push_back(indent + "dpp_vector_push_back(&" + name + ", &" +
+                        lower_push_value(value, c_type) + ");");
+        }
       }
       scope_depth_after(line);
       continue;
     }
 
     static const std::regex range_for_re(
-        R"(^(\s*)for\s*\(\s*const\s+([A-Za-z_]\w*)\s*&\s*([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)\s*\)\s*\{\s*$)");
-    if (std::regex_match(line, match, range_for_re)) {
-      const std::string vector_name = match[4].str();
+        R"(^(\s*)for\s*\(\s*const\s+(?:(?:std::)?[A-Za-z_]\w*)\s*&\s*([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)\s*\)\s*\{\s*$)");
+    static const std::regex range_for_value_re(
+        R"(^(\s*)for\s*\(\s*(?:auto|(?:std::)?[A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)\s*\)\s*\{\s*$)");
+    auto lower_range_for = [&](const std::string &item, const std::string &vec_name,
+                                const std::string &ind) -> bool {
       const auto found = std::find_if(vectors.begin(), vectors.end(),
                                       [&](const ScopedVector &vector) {
-                                        return vector.name == vector_name;
+                                        return vector.name == vec_name;
                                       });
-      if (found != vectors.end()) {
-        result.used_vector = true;
-        const std::string index = "dpp_vector_index_" + match[3].str();
-        range_vectors.push_back(
-            {match[3].str(), vector_name, found->elem_type, index, before_depth + 1});
-        out.push_back(match[1].str() + "for (size_t " + index + " = 0; " + index +
-                      " < dpp_vector_size(&" + vector_name + "); ++" + index + ") {");
-        out.push_back(match[1].str() + "  const " + found->elem_type + " *" +
-                      match[3].str() + " = (const " + found->elem_type +
-                      " *)dpp_vector_const_at(&" + vector_name + ", " + index + ");");
-        scope_depth_after(line);
-        continue;
+      if (found == vectors.end()) return false;
+      result.used_vector = true;
+      const std::string &elem = found->elem_type;
+      const bool prim = is_primitive_elem_type(elem);
+      const bool is_str = is_string_elem_type(elem);
+      // string-elem range-for: emit const char * so cout just works
+      range_vectors.push_back({item, vec_name, elem, ind, before_depth + 1,
+                                prim || is_str});
+      out.push_back(leading_indent(line) + "for (size_t " + ind + " = 0; " + ind +
+                    " < dpp_vector_size(&" + vec_name + "); ++" + ind + ") {");
+      if (is_str) {
+        out.push_back(leading_indent(line) + "  const char * " + item +
+                      " = dpp_string_c_str((const dpp_string *)dpp_vector_const_at(&" +
+                      vec_name + ", " + ind + "));");
+      } else if (prim) {
+        out.push_back(leading_indent(line) + "  " + elem + " " + item + " = *(" + elem +
+                      " *)dpp_vector_const_at(&" + vec_name + ", " + ind + ");");
+      } else {
+        out.push_back(leading_indent(line) + "  const " + elem + " *" + item +
+                      " = (const " + elem + " *)dpp_vector_const_at(&" + vec_name + ", " +
+                      ind + ");");
       }
+      scope_depth_after(line);
+      return true;
+    };
+    // Single-statement range-for: `for (auto x : v) body;` — no braces
+    // Handles `auto x`, `const int &x`, `int x`, etc.
+    static const std::regex range_for_stmt_re(
+        R"(^(\s*)for\s*\(\s*(?:const\s+)?(?:auto|(?:std::)?[A-Za-z_]\w*)\s*(?:&\s*)?([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)\s*\)\s+(.+)$)");
+    if (std::regex_match(line, match, range_for_stmt_re)) {
+      const std::string body = trim(match[4].str());
+      // Skip if body is just `{` — that's the block form handled below.
+      if (body != "{" && !(body.size() == 1 && body[0] == '{')) {
+        const std::string ind = leading_indent(line);
+        const std::string item = match[2].str();
+        const std::string vec_name = match[3].str();
+        const std::string index = "dpp_vector_index_" + item;
+        if (lower_range_for(item, vec_name, index)) {
+          // Emit body and closing brace, then pop the RangeVector (one-shot loop).
+          out.push_back(ind + "  " + body);
+          out.push_back(ind + "}");
+          range_vectors.erase(std::remove_if(range_vectors.begin(), range_vectors.end(),
+                                             [&](const RangeVector &r) {
+                                               return r.item_name == item && r.index_name == index;
+                                             }),
+                              range_vectors.end());
+          scope_depth_after(line);
+          continue;
+        }
+      }
+    }
+    if (std::regex_match(line, match, range_for_re)) {
+      const std::string index = "dpp_vector_index_" + match[2].str();
+      if (lower_range_for(match[2].str(), match[3].str(), index)) continue;
+    }
+    if (std::regex_match(line, match, range_for_value_re)) {
+      const std::string index = "dpp_vector_index_" + match[2].str();
+      if (lower_range_for(match[2].str(), match[3].str(), index)) continue;
     }
 
     std::string lowered = lower_vector_range_exprs(line, range_vectors);
+    bool did_emit = false;
     for (const ScopedVector &vector : vectors) {
       const std::string &name = vector.name;
       const std::string c_type = c_type_for_vector_elem(vector.elem_type);
@@ -236,12 +340,59 @@ VectorResult lower_vectors(const std::string &source) {
       if (std::regex_match(lowered, match, pop_re)) {
         lowered = match[1].str() + "dpp_vector_pop_back(&" + name + ");";
       }
+      // v.erase(v.begin() + N) → dpp_vector_erase_at(&v, N)
+      const std::regex erase_re("^(\\s*)" + name + R"(\.erase\s*\(\s*)" + name +
+                                R"(\.begin\s*\(\s*\)\s*\+\s*([^)]+)\)\s*;\s*$)");
+      if (std::regex_match(lowered, match, erase_re)) {
+        lowered = match[1].str() + "dpp_vector_erase_at(&" + name + ", " +
+                  trim(match[2].str()) + ");";
+      }
+      // v.erase(v.begin()) → dpp_vector_erase_at(&v, 0)
+      const std::regex erase_begin_re("^(\\s*)" + name + R"(\.erase\s*\(\s*)" + name +
+                                      R"(\.begin\s*\(\s*\)\s*\)\s*;\s*$)");
+      if (std::regex_match(lowered, match, erase_begin_re)) {
+        lowered = match[1].str() + "dpp_vector_erase_at(&" + name + ", 0);";
+      }
+      // v.insert(v.begin() + N, val) → dpp_vector_insert_at(&v, N, &val)
+      const std::regex insert_re("^(\\s*)" + name + R"(\.insert\s*\(\s*)" + name +
+                                 R"(\.begin\s*\(\s*\)\s*\+\s*([^,]+),\s*(.+)\)\s*;\s*$)");
+      if (std::regex_match(lowered, match, insert_re)) {
+        const std::string c_t = c_type_for_vector_elem(vector.elem_type);
+        lowered = match[1].str() + "dpp_vector_insert_at(&" + name + ", " +
+                  trim(match[2].str()) + ", &(" + c_t + "){" + trim(match[3].str()) + "});";
+      }
       const std::regex push_re("^(\\s*)" + name + R"(\.push_back\s*\((.*)\)\s*;\s*$)");
-      if (std::regex_match(lowered, match, push_re)) {
-        lowered = match[1].str() + "dpp_vector_push_back(&" + name + ", &" +
-                  lower_push_value(match[2].str(), c_type) + ");";
+      if (!did_emit && std::regex_match(lowered, match, push_re)) {
+        if (is_string_elem_type(vector.elem_type)) {
+          const std::string arg = trim(match[2].str());
+          if (!arg.empty() && arg.front() == '"') {
+            lowered = match[1].str() + "dpp_string_vector_push_cstr(&" + name + ", " + arg + ");";
+          } else {
+            lowered = match[1].str() + "dpp_string_vector_push(&" + name + ", &" + arg + ");";
+          }
+        } else {
+          const std::string raw_arg = trim(match[2].str());
+          // Detect struct constructor call: Type(args) — needs temp variable
+          const std::regex ctor_arg_re(R"(^([A-Za-z_]\w*)\s*\((.+)\)$)");
+          std::smatch ctor_m;
+          if (!is_primitive_elem_type(vector.elem_type) &&
+              std::regex_match(raw_arg, ctor_m, ctor_arg_re) &&
+              ctor_m[1].str() == c_type) {
+            const std::string ind = match[1].str();
+            const std::string tmp = "_dpp_push_" + name + "_" + std::to_string(out.size());
+            out.push_back(ind + c_type + " " + tmp + ";");
+            out.push_back(ind + c_type + "_init(&" + tmp + ", " + ctor_m[2].str() + ");");
+            out.push_back(ind + "dpp_vector_push_back(&" + name + ", &" + tmp + ");");
+            scope_depth_after(line);
+            did_emit = true;
+          } else {
+            lowered = match[1].str() + "dpp_vector_push_back(&" + name + ", &" +
+                      lower_push_value(raw_arg, c_type) + ");";
+          }
+        }
       }
     }
+    if (did_emit) continue;
 
     lowered = lower_vector_exprs(lowered, live_vectors(vectors));
     const std::string lowered_stripped = trim(lowered);

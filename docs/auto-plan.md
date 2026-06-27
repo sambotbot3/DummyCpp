@@ -4,7 +4,7 @@ Started: 2026-06-26
 
 ## Architecture Assessment
 
-Current state: 46 parity tests, sequential text-rewriting pipeline, no shared IR.
+Current state: 56 parity tests, sequential text-rewriting pipeline, no shared IR.
 The roadmap calls for a Dpp IR later (after Clang bridge). Do NOT build half an IR
 now — focus on features that work cleanly within the regex pipeline.
 
@@ -16,69 +16,81 @@ Key architectural gap to fix first: the `is_supported_include` whitelist in
 
 ### Phase 1 — Quick wins (Block 1)
 - [x] `nullptr` → `NULL` in `lower_cpp_surface_types`
-- [ ] `constexpr` variable/function keyword → strip to `const` / nothing
-- [ ] `static_assert(expr, msg)` → `_Static_assert(expr, msg)` in `lower_assertions`
-- [ ] Expand `is_supported_include`: `<cstddef>`, `<cstdlib>`, `<cstring>`, `<cmath>`,
-      `<climits>`, `<utility>`, `<type_traits>`, `<functional>`, `<numeric>`
-- [ ] Strip those includes in a new `lower_c_compat_includes` pass (no C equivalent)
-- [ ] Tests: 047_nullptr.cpp, 047b_static_assert.cpp, 047c_constexpr.cpp
+- [x] `constexpr` variable/function keyword → strip to `const`
+- [x] `static_assert` → drop (already verified by C++ build)
+- [x] Expand `is_supported_include`: `<cstddef>`, `<cstdlib>`, `<cstring>`, `<cmath>`,
+      `<climits>`, `<utility>`, `<type_traits>`, `<functional>`, `<numeric>`, `<stdexcept>`
+- [x] Strip those includes in `lower_cpp_surface_types`
+- [x] Tests: 047_nullptr.cpp, 048_enum.cpp
 
 ### Phase 2 — Enum / enum class (Block 2)
-- [ ] New `lower_enums` pass in `basic.cpp` + declaration in `basic.h`
-- [ ] Plain `enum Foo { A, B }` → `typedef enum Foo { A, B } Foo;`
-- [ ] `enum class Foo { A, B }` → prefix enumerators (`Foo_A`, `Foo_B`) + typedef
-- [ ] Replace `Foo::A` → `Foo_A` for known enum class names
-- [ ] Insert pass before `lower_records` in `transpiler.cpp`
-- [ ] Tests: 048_enum.cpp, 049_enum_class.cpp
+- [x] New `lower_enums` pass in `basic.cpp` + declaration in `basic.h`
+- [x] Plain `enum Foo { A, B }` → `typedef enum Foo { A, B } Foo;`
+- [x] `enum class Foo { A, B }` → prefix enumerators (`Foo_A`, `Foo_B`) + typedef
+- [x] Replace `Foo::A` → `Foo_A` for known enum class names
+- [x] Insert pass before `lower_records` in `transpiler.cpp`
+- [x] Tests: 048_enum.cpp, 049_enum_class.cpp
 
 ### Phase 3 — constexpr + default member initializers (Block 3)
-- [ ] Default member initializers in `records.cpp`:
-      `int x = 5;` in class body → `self->x = 5;` in generated `_init`
-      when not covered by explicit constructor initializer list
-- [ ] `constexpr` stripping (already covered in Phase 1)
-- [ ] Tests: 050_default_member_init.cpp
+- [x] Default member initializers in `records.cpp`
+- [x] Tests: 050_default_member_init.cpp
 
 ### Phase 4 — Static class members (Block 4)
-- [ ] `static int count;` in class body → collect in `records.cpp`
-- [ ] Emit `static T ClassName_field;` as a global before the struct typedef
-- [ ] `ClassName::field` → `ClassName_field` in `lower_cpp_surface_types` or records
-- [ ] `static` method lowering (remove `static`, promote to free function)
-- [ ] Tests: 051_static_members.cpp
+- [x] Static field lowering: emit `static T ClassName_field;` tentative definition
+- [x] `ClassName::field` access from outside → `ClassName_field`
+- [x] Static method lowering
+- [x] Tests: 051_static_members.cpp
 
 ### Phase 5 — String methods expansion (Block 5)
-- [ ] `dpp_string_find`, `dpp_string_substr`, `dpp_string_length` in runtime
-- [ ] `dpp_string_insert`, `dpp_string_erase` in runtime
-- [ ] `DPP_STRING_NPOS` constant → `SIZE_MAX`
-- [ ] `std::string::npos` → `DPP_STRING_NPOS`
-- [ ] Lowering in `string.cpp` for all new methods
-- [ ] Tests: 052_string_find.cpp, 053_string_substr.cpp
+- [x] `dpp_string_find_cstr`, `dpp_string_find_cstr_from`, `dpp_string_substr` in runtime
+- [x] `.length()`, `.find(needle)`, `.find(needle, pos)`, `.substr(pos, len)` lowering
+- [x] `std::size_t` → `size_t` in `lower_cpp_surface_types`
+- [x] `size_t`/`std::size_t` → `%zu` in var tracker + `format_spec_for_type`
+- [x] Fix double cleanup on return (use `close_scope_lines` in return path)
+- [x] Tests: 052_string_methods.cpp
 
 ### Phase 6 — Range-based for on vectors (Block 6)
-- [ ] Extend `lower_vectors` to detect `for (const auto &x : vec)` and
-      `for (auto x : vec)` and `for (T x : vec)` when `vec` is a known vector
-- [ ] Expand to index-loop with element access via `dpp_vector_const_at`/`dpp_vector_at`
-- [ ] Tests: 054_range_for_vector.cpp
+- [x] `for (const auto &x : vec)` and `for (auto x : vec)` lowering
+- [x] Value copy for primitives, pointer for records
+- [x] Tests: 053_range_for_vector.cpp
 
 ### Phase 7 — More algorithms (Block 7)
-- [ ] `std::find(v.begin(), v.end(), val)` → runtime `dpp_vector_find_*`
-- [ ] `std::count(v.begin(), v.end(), val)` → runtime `dpp_vector_count_*`
-- [ ] `std::accumulate(v.begin(), v.end(), init)` → runtime helper
-- [ ] Tests: 055_algorithm_find.cpp
+- [x] `std::find(v.begin(), v.end(), val) != v.end()` → `dpp_find_int`
+- [x] `std::count(v.begin(), v.end(), val)` → `dpp_count_int`
+- [x] `std::accumulate(v.begin(), v.end(), init)` → `dpp_accumulate_int`
+- [x] Runtime `static inline` functions in `dpp_algorithm.h`
+- [x] Tests: 054_algorithms.cpp
 
 ### Phase 8 — Map improvements (Block 8)
-- [ ] `m.find(key) != m.end()` → `dpp_map_contains(&m, &(T){key})`
-- [ ] `m.find(key) == m.end()` → `!dpp_map_contains(&m, &(T){key})`
-- [ ] `m.erase(key)` → `dpp_map_erase(&m, &(T){key})`
-- [ ] Runtime: `dpp_map_erase`, `dpp_unordered_map_erase`
-- [ ] Tests: 056_map_find_erase.cpp
+- [x] `m.find(key) != m.end()` → `dpp_map_contains`
+- [x] `m.find(key) == m.end()` → `!dpp_map_contains`
+- [x] `m.erase(key)` → `dpp_map_erase` / `dpp_unordered_map_erase`
+- [x] Runtime: `dpp_map_erase`, `dpp_unordered_map_erase` in `dpp_map.{h,c}`
+- [x] Tests: 055_map_find_erase.cpp
 
 ### Phase 9 — Architecture: shared scope utilities (Block 9)
-- [ ] Extract `is_loop_kw`, `count_char`, `leading_indent`, `peek_*_lines`
-      into `include/dpp/scope_utils.h` / `src/scope_utils.cpp`
-- [ ] De-duplicate between `memory.cpp` and `string.cpp`
-- [ ] Verify all tests still pass after refactor
+- [x] Move `is_loop_kw` to `string_utils.h` / `string_utils.cpp`
+- [x] Remove duplicate from `string.cpp` and `memory.cpp`
 
-### Phase 10 — Documentation update (Block 10)
+### Phase 10 — std::to_string (Block 10)
+- [x] `dpp_string_from_int`, `dpp_string_from_long`, `dpp_string_from_double` in runtime
+- [x] C11 `_Generic` macro `dpp_to_string(x)` for type dispatch
+- [x] Lowering in `copy_decl_re` branch: `std::string s = std::to_string(n)` →
+      `dpp_string s = dpp_to_string(n)`
+- [x] Tests: 056_to_string.cpp
+
+### Phase 11 — String index/push_back (Block 11)
+- [ ] `s[i]` → `dpp_string_c_str(&s)[i]` (read-only access)
+- [ ] `s.push_back(c)` → `dpp_string_append_char(&s, c)` (need runtime fn)
+- [ ] `.at(i)` → `dpp_string_c_str(&s)[i]`
+- [ ] Tests: 057_string_index.cpp
+
+### Phase 12 — Free function string return (Block 12)
+- [ ] Functions returning `std::string` → `dpp_string`
+- [ ] Caller-side cleanup for returned `dpp_string` values
+- [ ] Tests: 058_string_return.cpp
+
+### Phase 13 — Documentation update (Block 13)
 - [ ] Update `docs/unsupported.md` to reflect all new features
 - [ ] Update `docs/roadmap.md` "Done" section
 - [ ] Final commit

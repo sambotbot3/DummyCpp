@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Never put an author in a commit message. And keep them brief, like a subject line on an email.
+Never do a git push to master/main.
+
 ## Project Overview
 
 DummyCpp (`dpp`) is a C++11-to-C transpiler written in C++. It lowers a narrow C++ subset to readable, inspectable C, compiles that C with a plain C compiler, and verifies correctness by diffing stdout/exit-status between the C++ and C builds.
@@ -39,7 +42,7 @@ The lexer requires **re2c 4.5.1**. `scripts/gen_lexer.sh` warns on version misma
 Running a single parity test manually:
 ```bash
 build/dpp tests/cases/001_cout.cpp -o /tmp/out.c
-cc /tmp/out.c -I inject/c build/inject/libdpp_inject.a -o /tmp/out && /tmp/out
+cc /tmp/out.c -I inject/c build/inject/libdpp_inject.a -lm -o /tmp/out && /tmp/out
 ```
 
 ## Architecture
